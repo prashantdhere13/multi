@@ -1,3 +1,4 @@
+
 // src/ai/flows/translate-subtitles.ts
 'use server';
 
@@ -49,35 +50,25 @@ const translateSubtitlesFlow = ai.defineFlow(
     inputSchema: TranslateSubtitlesInputSchema,
     outputSchema: TranslateSubtitlesOutputSchema,
   },
-  async input => {
-    const {output} = await translateSubtitlesPrompt(input);
-    // Ensure the output matches the schema, specifically the 'translatedSubtitles' field
+  async (input): Promise<TranslateSubtitlesOutput> => {
+    // Await the prompt. If this throws (e.g., API error, network issue),
+    // the error will propagate and should be caught by the .catch() in CaptionCastUI.
+    const promptResponse = await translateSubtitlesPrompt(input);
+    const output = promptResponse.output; // `output` is of type TranslateSubtitlesOutput | null
+
     if (output && typeof output.translatedSubtitles === 'string') {
-      return output;
+      return output; // Success, valid structured output
     }
-    // Fallback or error handling if the output is not as expected
-    // This could be due to the model not perfectly adhering to the output schema description
-    // For now, we'll assume the direct text() output of the model is the translation if structured output fails
-    const llmResponse = await translateSubtitlesPrompt(input); // This might be redundant if it was already called
-                                                          // and failed to structure.
-                                                          // A more direct call to generate might be needed if prompt() always structures
-                                                          // or we adjust the prompt for simpler string output if schema adherence is an issue.
-                                                          
-    // If the model directly returns a string instead of the object:
-    // This part is tricky because `translateSubtitlesPrompt` is typed to return `output` based on `outputSchema`.
-    // If the LLM doesn't adhere perfectly, `output` might be structured differently or be null.
-    // Let's assume `output` is valid or null. If null, we might throw or return empty.
-    if (!output || typeof output.translatedSubtitles !== 'string') {
-        // Attempt to get raw text if available (this depends on underlying Genkit model response structure if schema fails)
-        // This is a defensive coding part. Ideally, the LLM adheres to the schema.
-        // @ts-ignore // Accessing potential raw text if structured output failed
-        const rawText = llmResponse.text || (llmResponse as any)?.candidates?.[0]?.message?.parts?.[0]?.text;
-        if (rawText) {
-          return { translatedSubtitles: rawText };
-        }
-        console.error("Translation output was not in the expected format and no raw text found.", output);
-        return { translatedSubtitles: "[Translation Format Error]" };
-    }
-    return output!;
+    
+    // If promptResponse.output is null or output.translatedSubtitles is not a string,
+    // it means the API call itself was successful, but the model's response
+    // did not conform to the expected schema.
+    // We must return something that matches TranslateSubtitlesOutputSchema.
+    console.warn(
+      `Translation model did not return the expected structured output for input: "${input.subtitlesToTranslate}". Received output:`,
+      output
+    );
+    return { translatedSubtitles: "[Translation Error: Malformed Response]" };
   }
 );
+
