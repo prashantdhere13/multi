@@ -50,7 +50,7 @@ export interface StreamInstance extends StreamInstanceConfig {
   translatedSubtitles: string[];
   currentBurnInSubtitle: string;
   isLoadingTranslation: boolean;
-  hlsOutputUrl?: string; // This will now be populated by a presumed backend
+  hlsOutputUrl?: string;
 }
 
 export default function CaptionCastUI() {
@@ -86,7 +86,7 @@ export default function CaptionCastUI() {
       translatedSubtitles: [],
       currentBurnInSubtitle: '',
       isLoadingTranslation: false,
-      hlsOutputUrl: undefined, // Initialize as undefined
+      hlsOutputUrl: undefined,
     };
     setStreams(prev => [...prev, newStream]);
     setTimeout(() => toast({ title: "Stream Added", description: `Configuration for ${config.streamUrl} added.` }), 0);
@@ -144,7 +144,7 @@ export default function CaptionCastUI() {
             originalSubtitles: [],
             translatedSubtitles: [],
             currentBurnInSubtitle: '',
-            hlsOutputUrl: undefined, // Reset HLS URL if critical settings change
+            hlsOutputUrl: undefined, 
           })
         };
       }
@@ -159,18 +159,21 @@ export default function CaptionCastUI() {
     let toastMessage = "";
     let toastType: "default" | "destructive" = "default";
     let streamUrlForToast = "";
-    let isConnectingOperation = false; // Differentiate between initiating connection vs. already connecting
+    let operationInitiated = false; // To track if a connect/disconnect op was truly started
+    let streamIdToToggle = streamId; // Explicitly capture streamId for use in async operations
 
     setStreams(prevStreams => {
-        const streamToToggle = prevStreams.find(s => s.id === streamId);
+        const streamToToggle = prevStreams.find(s => s.id === streamIdToToggle);
         if (!streamToToggle) return prevStreams;
+        
         streamUrlForToast = streamToToggle.streamUrl;
 
-        if (streamToToggle.isConnected) { // If currently connected, then disconnect
-            toastMessage = `Disconnected from ${streamUrlForToast}`;
+        if (streamToToggle.isConnected) { // Disconnect
+            toastMessage = `Disconnected from ${streamUrlForToast}.`;
             toastType = "default";
+            operationInitiated = true;
             return prevStreams.map(stream =>
-                stream.id === streamId ? {
+                stream.id === streamIdToToggle ? {
                     ...stream,
                     isConnected: false,
                     isPlaying: false,
@@ -181,43 +184,64 @@ export default function CaptionCastUI() {
                     hlsOutputUrl: undefined, 
                 } : stream
             );
-        } else { // If currently disconnected, then connect
+        } else { // Connect
             if (!streamUrlForToast) {
                 toastMessage = "Stream URL (UDP/SRT) cannot be empty.";
                 toastType = "destructive";
+                operationInitiated = true; 
                 return prevStreams; 
             }
-            // This is where the connection attempt begins
-            isConnectingOperation = true; 
-            toastMessage = `Attempting to connect to ${streamUrlForToast}... This is a UI-only simulation.`;
+            toastMessage = `Attempting to connect to ${streamUrlForToast}...`;
             toastType = "default";
-            
+            operationInitiated = true;
             return prevStreams.map(stream =>
-                stream.id === streamId ? { 
+                stream.id === streamIdToToggle ? { 
                     ...stream, 
-                    isLoadingConnection: false, // Assuming connection is quick or handled by backend
-                    isConnected: true, // Simulate connection success
-                    isPlaying: true // Optionally start playing, or require user to press play
-                    // hlsOutputUrl is NOT set here anymore, it's expected from a backend
+                    isLoadingConnection: true, // Set loading true, connection will be set after API call
+                    isConnected: false, // Not yet connected
                 } : stream
             );
         }
     });
     
-    // Show initial toast message (disconnecting, attempting to connect, or error)
-    if (toastMessage) {
+    if (operationInitiated && toastMessage) {
         setTimeout(() => {
             toast({ title: toastType === "default" ? "Stream Status" : "Error", description: toastMessage, variant: toastType });
         }, 0);
     }
-    
-    // If a connection operation was started and was successful (UI-wise)
-    if (isConnectingOperation && toastType === "default") { 
-        setTimeout(() => {
-             toast({ title: "Success", description: `UI Connected to ${streamUrlForToast}. Waiting for backend data (including HLS URL).`});
-        }, 100); // Slight delay to make it seem like an operation
+
+    // If a connection attempt was started (and wasn't an error from empty URL)
+    const streamBeingConnected = streams.find(s => s.id === streamIdToToggle);
+    if (!streamBeingConnected?.isConnected && streamUrlForToast && toastType === "default") {
+        fetch(`/api/stream/${streamIdToToggle}/status`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.message || `Failed to fetch stream status: ${response.status}`) });
+                }
+                return response.json();
+            })
+            .then(data => {
+                setStreams(prev => prev.map(s => {
+                    if (s.id === streamIdToToggle) {
+                        return { 
+                            ...s, 
+                            hlsOutputUrl: data.hlsOutputUrl,
+                            isConnected: true,
+                            isLoadingConnection: false,
+                            isPlaying: true // Optionally start playing
+                        };
+                    }
+                    return s;
+                }));
+                setTimeout(() => toast({ title: "Stream Connected", description: data.message || `Successfully connected to ${streamUrlForToast}. HLS available.` }), 0);
+            })
+            .catch(error => {
+                console.error(`Error fetching stream status for ${streamIdToToggle}:`, error);
+                setStreams(prev => prev.map(s => s.id === streamIdToToggle ? { ...s, isLoadingConnection: false, isConnected: false } : s));
+                setTimeout(() => toast({ title: "Connection Error", description: `Could not establish connection or fetch HLS URL for ${streamUrlForToast}. ${error.message}`, variant: "destructive" }), 0);
+            });
     }
-  }, [toast]);
+  }, [toast]); // Removed 'streams' from dependency to avoid stale closure issues for streamUrlForToast/streamIdToToggle inside fetch
 
 
  const handlePlay = useCallback((streamId: string) => {
@@ -277,9 +301,6 @@ export default function CaptionCastUI() {
       if (stream.isConnected && stream.originalSubtitles.length > 0) {
         const lastOriginalSubtitle = stream.originalSubtitles[stream.originalSubtitles.length - 1];
         
-        // Check if the last original subtitle has been translated.
-        // A simple check: if translated subtitles are fewer than original ones.
-        // This could be more sophisticated by tracking IDs or specific content.
         const needsTranslation = stream.translatedSubtitles.length < stream.originalSubtitles.length;
 
         if (needsTranslation && !stream.isLoadingTranslation) {
@@ -297,16 +318,17 @@ export default function CaptionCastUI() {
             },
             body: JSON.stringify({
               subtitlesToTranslate: lastOriginalSubtitle,
-              inputLanguage: stream.inputLanguage, // Send language code
-              outputLanguage: stream.outputLanguage, // Send language code
+              inputLanguage: stream.inputLanguage, 
+              outputLanguage: stream.outputLanguage, 
             }),
           })
           .then(response => {
             if (!response.ok) {
               return response.json().then(errData => {
-                throw new Error(errData.details || `HTTP error! status: ${response.status}`);
-              }).catch(() => {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(errData.details || errData.error || `HTTP error! status: ${response.status}`);
+              }).catch((e) => { 
+                 if (e instanceof Error) throw e;
+                 throw new Error(`HTTP error! status: ${response.status}`);
               });
             }
             return response.json();
@@ -318,7 +340,6 @@ export default function CaptionCastUI() {
             }
             setStreams(currentUpdatedStreams => currentUpdatedStreams.map(streamToUpdate => {
               if (streamToUpdate.id === stream.id) {
-                // Keep last N subtitles for display
                 const updatedTranslatedSubs = [...streamToUpdate.translatedSubtitles.slice(-9), newTranslatedSub];
                 return {
                   ...streamToUpdate,
@@ -332,14 +353,15 @@ export default function CaptionCastUI() {
           })
           .catch(error => {
             console.error("API Translation error for stream " + stream.id + ":", error);
-            setTimeout(() => toast({ title: "Translation Error", description: `Stream ${stream.streamUrl || 'Unknown'}: Failed to translate. ${error.message}`, variant: "destructive" }), 0);
+            const errorMessage = error instanceof Error ? error.message : "Unknown translation error";
+            setTimeout(() => toast({ title: "Translation Error", description: `Stream ${stream.streamUrl || 'Unknown'}: Failed to translate. ${errorMessage}`, variant: "destructive" }), 0);
             setStreams(currentErroredStreams => currentErroredStreams.map(streamToUpdate => {
               if (streamToUpdate.id === stream.id) {
-                 const updatedTranslatedSubs = [...streamToUpdate.translatedSubtitles.slice(-9), `[Translation Failed: ${error.message || 'Network error'}]`];
+                 const updatedTranslatedSubs = [...streamToUpdate.translatedSubtitles.slice(-9), `[Translation Failed: ${errorMessage}]`];
                 return {
                   ...streamToUpdate,
                   translatedSubtitles: updatedTranslatedSubs,
-                  currentBurnInSubtitle: `[Translation Failed: ${error.message || 'Network error'}]`,
+                  currentBurnInSubtitle: `[Translation Failed: ${errorMessage}]`,
                   isLoadingTranslation: false,
                 };
               }
@@ -414,8 +436,8 @@ export default function CaptionCastUI() {
                     </Button>
                   </div>
                 </div>
-                 {stream.isLoadingConnection && <p className="text-sm text-accent animate-pulse mt-2">Attempting to connect...</p>}
-                 {!stream.isLoadingConnection && stream.isConnected && <p className="text-sm text-green-400 mt-2">Status: Connected. {stream.hlsOutputUrl ? `HLS Output: Active (${stream.hlsOutputUrl})` : 'HLS Output: Not available (requires backend)'}</p>}
+                 {stream.isLoadingConnection && <p className="text-sm text-accent animate-pulse mt-2">Attempting to connect and fetch stream details...</p>}
+                 {!stream.isLoadingConnection && stream.isConnected && <p className="text-sm text-green-400 mt-2">Status: Connected. {stream.hlsOutputUrl ? `HLS Output: Active (${stream.hlsOutputUrl})` : 'HLS Output: Not available (backend to provide)'}</p>}
                  {!stream.isConnected && !stream.isLoadingConnection && <p className="text-sm text-muted-foreground mt-2">Status: Disconnected</p>}
               </CardHeader>
               <CardContent className="p-6 space-y-6">
@@ -474,5 +496,3 @@ export default function CaptionCastUI() {
     </div>
   );
 }
-
-
