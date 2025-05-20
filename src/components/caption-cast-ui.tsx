@@ -56,7 +56,7 @@ export const LANGUAGES = [
 
 export interface StreamInstance {
   id: string;
-  srtUrl: string;
+  streamUrl: string; // Renamed from srtUrl
   inputLanguage: string;
   outputLanguage: string;
   inputLanguageName: string;
@@ -76,7 +76,7 @@ export default function CaptionCastUI() {
   const [streams, setStreams] = useState<StreamInstance[]>([]);
   const { toast } = useToast();
 
-  const addStream = useCallback((config: { srtUrl: string; inputLanguage: string; outputLanguage: string }) => {
+  const addStream = useCallback((config: { streamUrl: string; inputLanguage: string; outputLanguage: string }) => {
     const inputLang = LANGUAGES.find(l => l.code === config.inputLanguage);
     const outputLang = LANGUAGES.find(l => l.code === config.outputLanguage);
 
@@ -100,7 +100,7 @@ export default function CaptionCastUI() {
       isLoadingTranslation: false,
     };
     setStreams(prev => [...prev, newStream]);
-    toast({ title: "Stream Added", description: `Configuration for ${config.srtUrl} added.` });
+    toast({ title: "Stream Added", description: `Configuration for ${config.streamUrl} added.` });
   }, [toast]);
 
   const removeStream = useCallback((streamId: string) => {
@@ -137,13 +137,11 @@ export default function CaptionCastUI() {
         }
         return stream;
       }));
-      // Call toast *after* scheduling state update
-      toast({ title: "Disconnected", description: `Disconnected from ${streamToToggle.srtUrl}` });
+      toast({ title: "Disconnected", description: `Disconnected from ${streamToToggle.streamUrl}` });
     } else {
       // CONNECTING
-      if (!streamToToggle.srtUrl) {
-        // Call toast directly as no state update follows immediately in this branch
-        toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
+      if (!streamToToggle.streamUrl) {
+        toast({ title: "Error", description: "UDP Stream URL cannot be empty.", variant: "destructive" });
         return;
       }
 
@@ -153,18 +151,26 @@ export default function CaptionCastUI() {
         }
         return stream;
       }));
-      // Call toast *after* scheduling state update
-      toast({ title: "Connecting...", description: `Attempting to connect to ${streamToToggle.srtUrl}` });
+      toast({ title: "Connecting...", description: `Attempting to connect to ${streamToToggle.streamUrl}` });
 
+      // Simulate connection attempt
       setTimeout(() => {
+        let connectedSuccessfully = false;
         setStreams(currentStreams => currentStreams.map(currentS => {
           if (currentS.id === streamId) {
+            // Simulate success for this example
+            connectedSuccessfully = true;
             return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
           }
           return currentS;
         }));
-        // Call toast *after* scheduling state update, using the initially captured srtUrl for the message
-        toast({ title: "Success", description: `Connected to ${streamToToggle.srtUrl}` });
+
+        if (connectedSuccessfully) {
+           toast({ title: "Success", description: `Connected to ${streamToToggle.streamUrl}` });
+        } else {
+          // This part might not be reached in current simple timeout logic, but good for robustness
+          toast({ title: "Error", description: `Failed to connect to ${streamToToggle.streamUrl}`, variant: "destructive" });
+        }
       }, 1500);
     }
   }, [streams, toast]);
@@ -174,7 +180,7 @@ export default function CaptionCastUI() {
     setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
         if (!stream.isConnected) {
-          return stream; // Don't change state, toast will be handled outside
+          return stream; 
         }
         canPlay = true;
         return { ...stream, isPlaying: true };
@@ -186,7 +192,7 @@ export default function CaptionCastUI() {
       toast({ title: "Stream Control", description: "Stream resumed." });
     } else {
       const stream = streams.find(s => s.id === streamId);
-      if (stream) { // Check if stream exists before trying to access its properties
+      if (stream) { 
           toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive" });
       }
     }
@@ -250,7 +256,7 @@ export default function CaptionCastUI() {
               })
               .catch(error => {
                 console.error("Translation error for stream " + s.id + ":", error);
-                toast({ title: "Translation Error", description: `Stream ${s.srtUrl}: Failed to translate.`, variant: "destructive" });
+                toast({ title: "Translation Error", description: `Stream ${s.streamUrl}: Failed to translate.`, variant: "destructive" });
                 setStreams(currentErroredStreams => currentErroredStreams.map(streamToUpdate => {
                   if (streamToUpdate.id === stream.id) {
                     return {
@@ -309,7 +315,7 @@ export default function CaptionCastUI() {
               <CardTitle className="text-xl flex items-center"><Globe className="mr-2 h-5 w-5 text-muted-foreground"/>No Streams Configured</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">Use the section above to add a new SRT stream input.</p>
+              <p className="text-muted-foreground">Use the section above to add a new UDP stream input.</p>
             </CardContent>
           </Card>
         )}
@@ -320,7 +326,7 @@ export default function CaptionCastUI() {
               <CardHeader className="bg-card-foreground/5">
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-2xl mb-1">Stream: {stream.srtUrl || "Not Set"}</CardTitle>
+                    <CardTitle className="text-2xl mb-1">Stream: {stream.streamUrl || "Not Set"}</CardTitle>
                     <CardDescription>
                       Translate from {stream.inputLanguageName} to {stream.outputLanguageName}
                     </CardDescription>
@@ -328,7 +334,7 @@ export default function CaptionCastUI() {
                   <div className="flex flex-col items-end space-y-2">
                      <Button 
                         onClick={() => handleConnectToggle(stream.id)} 
-                        disabled={stream.isLoadingConnection || !stream.srtUrl} 
+                        disabled={stream.isLoadingConnection || !stream.streamUrl} 
                         variant={stream.isConnected ? "outline" : "default"} 
                         className={`${stream.isConnected ? 'border-green-500 text-green-500 hover:bg-green-500/10' : 'bg-primary hover:bg-primary/90 text-primary-foreground'} transition-all duration-150 ease-in-out`}
                         size="sm"
@@ -382,4 +388,3 @@ export default function CaptionCastUI() {
     </div>
   );
 }
-
