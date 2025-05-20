@@ -56,7 +56,7 @@ export const LANGUAGES = [
 
 export interface StreamInstance {
   id: string;
-  streamUrl: string; 
+  streamUrl: string;
   inputLanguage: string;
   outputLanguage: string;
   inputLanguageName: string;
@@ -70,6 +70,7 @@ export interface StreamInstance {
   subtitleIndex: number;
   isLoadingTranslation: boolean;
   intervalId?: NodeJS.Timeout;
+  hlsOutputUrl?: string; // Added for HLS playback
 }
 
 export default function CaptionCastUI() {
@@ -98,6 +99,7 @@ export default function CaptionCastUI() {
       currentBurnInSubtitle: '',
       subtitleIndex: 0,
       isLoadingTranslation: false,
+      hlsOutputUrl: undefined, // Initialize hlsOutputUrl
     };
     setStreams(prev => [...prev, newStream]);
     toast({ title: "Stream Added", description: `Configuration for ${config.streamUrl} added.` });
@@ -117,9 +119,9 @@ export default function CaptionCastUI() {
   const handleConnectToggle = useCallback((streamId: string) => {
     const streamToToggle = streams.find(s => s.id === streamId);
     if (!streamToToggle) return;
-  
-    const currentStreamUrl = streamToToggle.streamUrl; // Capture for use in toasts
-  
+
+    const currentStreamUrlForToast = streamToToggle.streamUrl; 
+
     if (streamToToggle.isConnected) {
       // DISCONNECTING
       setStreams(prevStreams => prevStreams.map(stream => {
@@ -135,48 +137,52 @@ export default function CaptionCastUI() {
             currentBurnInSubtitle: '',
             subtitleIndex: 0,
             intervalId: undefined,
+            hlsOutputUrl: undefined, // Clear HLS URL on disconnect
           };
         }
         return stream;
       }));
-      // Toast after state update is scheduled
-      toast({ title: "Disconnected", description: `Disconnected from ${currentStreamUrl}` });
+      toast({ title: "Disconnected", description: `Disconnected from ${currentStreamUrlForToast}` });
     } else {
       // CONNECTING
-      if (!currentStreamUrl) {
+      if (!currentStreamUrlForToast) {
         toast({ title: "Error", description: "Stream URL cannot be empty.", variant: "destructive" });
         return;
       }
-  
+
       setStreams(prevStreams => prevStreams.map(stream => {
         if (stream.id === streamId) {
           return { ...stream, isLoadingConnection: true };
         }
         return stream;
       }));
-      // Toast after state update is scheduled
-      toast({ title: "Connecting...", description: `Attempting to connect to ${currentStreamUrl}` });
-  
-      // Simulate connection attempt
+      toast({ title: "Connecting...", description: `Attempting to connect to ${currentStreamUrlForToast}` });
+
       setTimeout(() => {
         let connectedSuccessfully = false;
-        let finalStreamUrlForToast = ''; // To ensure we use the state *after* this update
-  
+        let finalStreamUrlForToastMessage = ''; 
+        
         setStreams(currentStreams => currentStreams.map(currentS => {
           if (currentS.id === streamId) {
-            // Simulate success for this example
             connectedSuccessfully = true;
-            finalStreamUrlForToast = currentS.streamUrl; // Capture from the potentially updated state
-            return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
+            finalStreamUrlForToastMessage = currentS.streamUrl; 
+            return { 
+              ...currentS, 
+              isConnected: true, 
+              isLoadingConnection: false, 
+              isPlaying: true, // Start playing on connect
+              hlsOutputUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', // MOCK HLS URL
+            };
           }
           return currentS;
         }));
-  
-        // Toasts after the setStreams inside setTimeout is scheduled
+
         if (connectedSuccessfully) {
-           toast({ title: "Success", description: `Connected to ${finalStreamUrlForToast || currentStreamUrl}` });
+           toast({ title: "Success", description: `Connected to ${finalStreamUrlForToastMessage || currentStreamUrlForToast}` });
         } else {
-          toast({ title: "Error", description: `Failed to connect to ${finalStreamUrlForToast || currentStreamUrl}`, variant: "destructive" });
+          // This else branch might not be reached if connection always succeeds in mock
+          setStreams(prev => prev.map(s => s.id === streamId ? {...s, isLoadingConnection: false} : s));
+          toast({ title: "Error", description: `Failed to connect to ${finalStreamUrlForToastMessage || currentStreamUrlForToast}`, variant: "destructive" });
         }
       }, 1500);
     }
@@ -199,13 +205,12 @@ export default function CaptionCastUI() {
       return stream;
     }));
   
-    // Toast after state update
     if (canPlay) {
       toast({ title: "Stream Control", description: streamDescription });
     } else {
       toast({ title: "Error", description: streamDescription, variant: "destructive" });
     }
-  }, [toast]); // streams dependency removed to avoid stale closures issues with toast after setStreams
+  }, [toast]); 
 
   const handlePause = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
@@ -358,12 +363,16 @@ export default function CaptionCastUI() {
                   </div>
                 </div>
                  {stream.isLoadingConnection && <p className="text-sm text-accent animate-pulse mt-2">Attempting to connect...</p>}
-                 {!stream.isLoadingConnection && stream.isConnected && <p className="text-sm text-green-400 mt-2">Successfully connected.</p>}
+                 {!stream.isLoadingConnection && stream.isConnected && <p className="text-sm text-green-400 mt-2">Successfully connected. HLS Output: {stream.hlsOutputUrl ? 'Active' : 'Pending'}</p>}
               </CardHeader>
               <CardContent className="p-6 space-y-6">
                 {stream.isConnected && (
                   <>
-                    <VideoPlayerPlaceholder currentSubtitle={stream.currentBurnInSubtitle} isConnected={stream.isConnected} />
+                    <VideoPlayerPlaceholder 
+                      hlsStreamUrl={stream.hlsOutputUrl}
+                      currentSubtitle={stream.currentBurnInSubtitle} 
+                      isPlaying={stream.isPlaying} 
+                    />
                     <SubtitleDisplaySection
                       originalSubtitles={stream.originalSubtitles}
                       translatedSubtitles={stream.translatedSubtitles}
@@ -397,3 +406,5 @@ export default function CaptionCastUI() {
     </div>
   );
 }
+
+    
