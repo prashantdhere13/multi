@@ -11,21 +11,19 @@ interface VideoPlayerPlaceholderProps {
 }
 
 export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlaying }: VideoPlayerPlaceholderProps) {
+  console.log("[VideoPlayerPlaceholder] Props received:", { hlsStreamUrl, isPlaying }); // DIAGNOSTIC LOG
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const isPlayingRef = useRef(isPlaying);
 
-  // Update isPlayingRef whenever isPlaying prop changes
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
-  // Effect for HLS/source setup - depends only on hlsStreamUrl
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    // Event handlers
     const handleManifestParsed = () => {
       if (isPlayingRef.current && videoElement) {
         videoElement.play().catch(error => {
@@ -43,7 +41,7 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
     };
     
     const handleHlsError = (event: string, data: ErrorData) => {
-        const hlsInstance = hlsRef.current; // Capture current ref value
+        const hlsInstance = hlsRef.current;
         if (!hlsInstance) return;
 
         if (data.fatal) {
@@ -59,7 +57,7 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
             default:
                 console.error('HLS.js: fatal error encountered, cannot recover', data);
                 hlsInstance.destroy();
-                hlsRef.current = null; // Clear the ref as instance is destroyed
+                hlsRef.current = null;
                 break;
             }
         } else {
@@ -67,23 +65,24 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
         }
     };
 
-    // Cleanup previous HLS instance or src
     if (hlsRef.current) {
+      hlsRef.current.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
+      hlsRef.current.off(Hls.Events.ERROR, handleHlsError);
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    videoElement.removeEventListener('loadedmetadata', handleNativeMetadataLoaded);
     videoElement.removeAttribute('src');
-    // videoElement.load(); // Avoid calling load() directly after src change unless necessary, can cause issues.
+    // videoElement.load(); // Avoid if not strictly necessary
 
     if (hlsStreamUrl) {
       if (Hls.isSupported()) {
         const hls = new Hls({
-          // Recommended settings for live streams
-          // liveSyncDurationCount: 3, // Number of segments to keep in buffer for live sync
-          // liveMaxLatencyDurationCount: 5, // Max latency before seeking to live edge
-          // maxMaxBufferLength: 30, // Max buffer length in seconds
+          // liveSyncDurationCount: 3,
+          // liveMaxLatencyDurationCount: 5,
+          // maxMaxBufferLength: 30,
         });
-        hlsRef.current = hls; // Assign to ref
+        hlsRef.current = hls;
         hls.on(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
         hls.on(Hls.Events.ERROR, handleHlsError);
         hls.loadSource(hlsStreamUrl);
@@ -91,61 +90,53 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
       } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
         videoElement.src = hlsStreamUrl;
         videoElement.addEventListener('loadedmetadata', handleNativeMetadataLoaded);
-        // Consider: videoElement.addEventListener('error', (e) => console.error("Native HLS: Video error:", e));
       } else {
         console.warn("HLS.js is not supported and native HLS playback might not be available.");
-        videoElement.src = hlsStreamUrl; // Fallback attempt
+        videoElement.src = hlsStreamUrl;
       }
     } else {
-      // If hlsStreamUrl is cleared, ensure the video element is reset
       videoElement.pause();
       videoElement.removeAttribute('src');
-      // videoElement.load(); // This might be desired to clear the last frame
     }
 
-    return () => { // Cleanup function for this effect
+    return () => {
       if (hlsRef.current) {
-        // Detach listeners before destroying
         hlsRef.current.off(Hls.Events.MANIFEST_PARSED, handleManifestParsed);
         hlsRef.current.off(Hls.Events.ERROR, handleHlsError);
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
       videoElement.removeEventListener('loadedmetadata', handleNativeMetadataLoaded);
-      // videoElement.removeEventListener('error', ...); // If error listener was added for native
       videoElement.removeAttribute('src');
-      // videoElement.load(); // Optional: reset player state on component unmount or URL change
     };
-  }, [hlsStreamUrl]); // Only re-run when hlsStreamUrl changes
+  }, [hlsStreamUrl]);
 
-  // Effect for play/pause commands based on isPlaying prop
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement) return;
+    if (!videoElement || !hlsStreamUrl) { 
+        if(videoElement && !hlsStreamUrl && !videoElement.paused) videoElement.pause();
+        return;
+    }
 
     if (isPlaying) {
-      // Attempt to play only if there's a stream URL configured and video is ready enough
-      if (hlsStreamUrl && videoElement.readyState >= videoElement.HAVE_METADATA) {
-        if (videoElement.paused) {
-          const playPromise = videoElement.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(error => {
-              if (error.name !== 'AbortError') { // AbortError is common if play is interrupted by new load
-                console.error("Video Player: Error attempting to play:", error);
-              }
-            });
-          }
+      // MANIFEST_PARSED or loadedmetadata handles initial play via isPlayingRef.current.
+      // This effect handles subsequent play requests if video is ready and paused.
+      if (videoElement.paused && videoElement.readyState >= videoElement.HAVE_ENOUGH_DATA) { // Use HAVE_ENOUGH_DATA
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            if (error.name !== 'AbortError') {
+              console.error("Video Player: Error attempting to play in isPlaying effect:", error);
+            }
+          });
         }
-      } else if (hlsStreamUrl && videoElement.readyState < videoElement.HAVE_METADATA) {
-        // If not ready, the loadedmetadata/manifestparsed handlers will attempt play via isPlayingRef
-        // console.log("Video player: play requested, but video not ready. Waiting for load events.");
       }
     } else {
       if (!videoElement.paused) {
         videoElement.pause();
       }
     }
-  }, [isPlaying, hlsStreamUrl]); // Also depend on hlsStreamUrl to re-evaluate if it becomes available/unavailable
+  }, [isPlaying, hlsStreamUrl]);
 
   const displaySubtitleText = currentSubtitle || (hlsStreamUrl && isPlaying && !currentSubtitle ? "Waiting for subtitles..." : "");
 
@@ -157,14 +148,13 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
         controls
         muted
         playsInline
-        // autoPlay is managed by useEffects
       />
       {!hlsStreamUrl && (
          <Image
           src="https://placehold.co/1920x1080.png"
           alt="Video stream placeholder"
-          fill // Use fill for Next.js v13+ Image
-          style={{ objectFit: 'cover' }} // Required with fill
+          fill
+          style={{ objectFit: 'cover' }}
           data-ai-hint="broadcast television"
           priority
         />
@@ -187,3 +177,5 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
     </div>
   );
 }
+
+    

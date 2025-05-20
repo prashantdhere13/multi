@@ -137,14 +137,14 @@ export default function CaptionCastUI() {
           inputLanguageName: inputLang.name,
           outputLanguageName: outputLang.name,
           subtitleSourceName: subSource.name,
-          ...(shouldResetConnection && { 
+          ...(shouldResetConnection && {
             isConnected: false,
             isLoadingConnection: false,
             isPlaying: false,
             originalSubtitles: [],
             translatedSubtitles: [],
             currentBurnInSubtitle: '',
-            hlsOutputUrl: undefined, 
+            hlsOutputUrl: undefined,
           })
         };
       }
@@ -164,23 +164,18 @@ export default function CaptionCastUI() {
     }
 
     if (streamToProcess.isLoadingConnection) {
-      // Already processing, do nothing to prevent multiple requests.
       setTimeout(() => toast({ title: "Stream Status", description: `Connection process for ${streamToProcess.streamUrl} is already underway.`, variant: "default" }), 0);
       return;
     }
 
     if (streamToProcess.isConnected) {
       // DISCONNECT LOGIC
-      setStreams(prev => prev.map(s => s.id === streamId ? { 
-        ...s, 
-        isConnected: false, 
-        isLoadingConnection: false, 
-        isPlaying: false, 
+      setStreams(prev => prev.map(s => s.id === streamId ? {
+        ...s,
+        isConnected: false,
+        isLoadingConnection: false,
+        isPlaying: false,
         hlsOutputUrl: undefined,
-        // Optionally clear subtitles:
-        // originalSubtitles: [],
-        // translatedSubtitles: [],
-        // currentBurnInSubtitle: '',
       } : s));
       setTimeout(() => toast({ title: "Stream Status", description: `Disconnected from ${streamToProcess.streamUrl}.` }), 0);
     } else {
@@ -190,33 +185,34 @@ export default function CaptionCastUI() {
         return;
       }
 
-      // Set loading state
       setStreams(prev => prev.map(s => s.id === streamId ? { ...s, isLoadingConnection: true, isConnected: false } : s));
       setTimeout(() => toast({ title: "Stream Status", description: `Attempting to connect to ${streamToProcess.streamUrl}...` }), 0);
 
       fetch(`/api/stream/${streamId}/status`)
         .then(response => {
           if (!response.ok) {
-             // Try to parse error JSON, otherwise use status text
             return response.json().then(errData => {
               const errorMessage = errData.message || errData.error || response.statusText || `Failed to fetch stream status: ${response.status}`;
               throw new Error(errorMessage);
-            }).catch(() => { // Fallback if response.json() fails (e.g. not valid JSON)
+            }).catch(() => {
               throw new Error(response.statusText || `Failed to fetch stream status: ${response.status}`);
             });
           }
           return response.json();
         })
         .then(data => {
+          console.log("[CaptionCastUI] Fetched stream status data:", data); // DIAGNOSTIC LOG
           setStreams(prev => prev.map(s => {
             if (s.id === streamId) {
-              return { 
-                ...s, 
+              const updatedStream = {
+                ...s,
                 hlsOutputUrl: data.hlsOutputUrl,
                 isConnected: true,
                 isLoadingConnection: false,
-                isPlaying: true // Start playing once HLS URL is available
+                isPlaying: true
               };
+              console.log("[CaptionCastUI] Updating stream with HLS URL:", updatedStream); // DIAGNOSTIC LOG
+              return updatedStream;
             }
             return s;
           }));
@@ -243,9 +239,9 @@ export default function CaptionCastUI() {
                     playToastMessage = "Not connected to a stream.";
                     playToastType = "destructive";
                     shouldToast = true;
-                    return stream; 
+                    return stream;
                 }
-                if (stream.isPlaying) { 
+                if (stream.isPlaying) {
                     return stream;
                 }
                 playToastMessage = "Stream resumed.";
@@ -261,11 +257,11 @@ export default function CaptionCastUI() {
         }
         return updatedStreams;
     });
-  }, [toast]); 
+  }, [toast]);
 
   const handlePause = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
-      if (stream.id === streamId && stream.isPlaying) { 
+      if (stream.id === streamId && stream.isPlaying) {
         setTimeout(() => toast({ title: "Stream Control", description: "Stream paused." }),0);
         return { ...stream, isPlaying: false };
       }
@@ -277,7 +273,7 @@ export default function CaptionCastUI() {
      setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
         setTimeout(() => toast({ title: "Stream Control", description: "Stream stopped." }),0);
-        return { ...stream, isPlaying: false, currentBurnInSubtitle: '' }; 
+        return { ...stream, isPlaying: false, currentBurnInSubtitle: '' };
       }
       return stream;
     }));
@@ -305,15 +301,15 @@ export default function CaptionCastUI() {
             },
             body: JSON.stringify({
               subtitlesToTranslate: lastOriginalSubtitle,
-              inputLanguage: stream.inputLanguage, 
-              outputLanguage: stream.outputLanguage, 
+              inputLanguage: stream.inputLanguage,
+              outputLanguage: stream.outputLanguage,
             }),
           })
           .then(response => {
             if (!response.ok) {
               return response.json().then(errData => {
                 throw new Error(errData.details || errData.error || `HTTP error! status: ${response.status}`);
-              }).catch((e) => { 
+              }).catch((e) => {
                  if (e instanceof Error) throw e;
                  throw new Error(`HTTP error! status: ${response.status}`);
               });
@@ -403,10 +399,10 @@ export default function CaptionCastUI() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center space-x-2">
-                     <Button 
-                        onClick={() => handleConnectToggle(stream.id)} 
-                        disabled={stream.isLoadingConnection || !stream.streamUrl} 
-                        variant={stream.isConnected ? "outline" : "default"} 
+                     <Button
+                        onClick={() => handleConnectToggle(stream.id)}
+                        disabled={stream.isLoadingConnection || !stream.streamUrl}
+                        variant={stream.isConnected ? "outline" : "default"}
                         className={`${stream.isConnected ? 'border-green-500 text-green-500 hover:bg-green-500/10' : 'bg-primary hover:bg-primary/90 text-primary-foreground'} transition-all duration-150 ease-in-out`}
                         size="sm"
                       >
@@ -430,10 +426,10 @@ export default function CaptionCastUI() {
               <CardContent className="p-6 space-y-6">
                 {stream.isConnected && (
                   <>
-                    <VideoPlayerPlaceholder 
+                    <VideoPlayerPlaceholder
                       hlsStreamUrl={stream.hlsOutputUrl}
-                      currentSubtitle={stream.currentBurnInSubtitle} 
-                      isPlaying={stream.isPlaying} 
+                      currentSubtitle={stream.currentBurnInSubtitle}
+                      isPlaying={stream.isPlaying}
                     />
                     <SubtitleDisplaySection
                       originalSubtitles={stream.originalSubtitles}
@@ -484,3 +480,4 @@ export default function CaptionCastUI() {
   );
 }
 
+    
