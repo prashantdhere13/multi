@@ -115,11 +115,14 @@ export default function CaptionCastUI() {
   }, [toast]);
 
   const handleConnectToggle = useCallback((streamId: string) => {
-    setStreams(prevStreams => prevStreams.map(stream => {
-      if (stream.id === streamId) {
-        if (stream.isConnected) { // Currently connected, so disconnect
+    const streamToToggle = streams.find(s => s.id === streamId);
+    if (!streamToToggle) return;
+
+    if (streamToToggle.isConnected) {
+      // DISCONNECTING
+      setStreams(prevStreams => prevStreams.map(stream => {
+        if (stream.id === streamId) {
           if (stream.intervalId) clearInterval(stream.intervalId);
-          toast({ title: "Disconnected", description: `Disconnected from ${stream.srtUrl}` });
           return {
             ...stream,
             isConnected: false,
@@ -131,28 +134,37 @@ export default function CaptionCastUI() {
             subtitleIndex: 0,
             intervalId: undefined,
           };
-        } else { // Currently disconnected, so connect
-          if (!stream.srtUrl) {
-            toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
-            return stream;
-          }
-          toast({ title: "Connecting...", description: `Attempting to connect to ${stream.srtUrl}` });
-          // Simulate connection
-          setTimeout(() => {
-            setStreams(s => s.map(currentS => {
-              if (currentS.id === streamId) {
-                toast({ title: "Success", description: `Connected to ${currentS.srtUrl}` });
-                return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
-              }
-              return currentS;
-            }));
-          }, 1500);
+        }
+        return stream;
+      }));
+      toast({ title: "Disconnected", description: `Disconnected from ${streamToToggle.srtUrl}` });
+    } else {
+      // CONNECTING
+      if (!streamToToggle.srtUrl) {
+        toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
+        return; 
+      }
+
+      setStreams(prevStreams => prevStreams.map(stream => {
+        if (stream.id === streamId) {
           return { ...stream, isLoadingConnection: true };
         }
-      }
-      return stream;
-    }));
-  }, [toast]);
+        return stream;
+      }));
+      
+      toast({ title: "Connecting...", description: `Attempting to connect to ${streamToToggle.srtUrl}` });
+
+      setTimeout(() => {
+        setStreams(currentStreams => currentStreams.map(currentS => {
+          if (currentS.id === streamId) {
+            toast({ title: "Success", description: `Connected to ${currentS.srtUrl}` });
+            return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
+          }
+          return currentS;
+        }));
+      }, 1500);
+    }
+  }, [streams, toast]);
 
   const handlePlay = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
@@ -182,8 +194,6 @@ export default function CaptionCastUI() {
      setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
         toast({ title: "Stream Control", description: "Stream stopped. Output might clear." });
-        // Keep connection, but stop playback and clear current subtitle.
-        // Optionally, could also clear subtitle arrays here.
         return { ...stream, isPlaying: false, currentBurnInSubtitle: '', subtitleIndex: (ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES).length };
       }
       return stream;
@@ -193,22 +203,19 @@ export default function CaptionCastUI() {
   useEffect(() => {
     streams.forEach(stream => {
       if (stream.isConnected && stream.isPlaying && !stream.intervalId) {
-        // Start interval for this stream
         const mockSubtitlesForInputLang = ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES;
 
         const newIntervalId = setInterval(async () => {
           setStreams(prevSs => prevSs.map(s => {
-            if (s.id === stream.id && s.isConnected && s.isPlaying) { // Double check state inside interval
+            if (s.id === stream.id && s.isConnected && s.isPlaying) { 
               let currentSubIndex = s.subtitleIndex;
               if (currentSubIndex >= mockSubtitlesForInputLang.length) {
-                currentSubIndex = 0; // Loop subtitles
-                 // return {...s, subtitleIndex: 0, originalSubtitles: [], translatedSubtitles: []}; // Clears history on loop
+                currentSubIndex = 0; 
               }
               
               const newEngSub = mockSubtitlesForInputLang[currentSubIndex];
               const updatedStream = { ...s, originalSubtitles: [...s.originalSubtitles.slice(-9), newEngSub], isLoadingTranslation: true };
               
-              // Perform translation
               translateSubtitles({ 
                 subtitlesToTranslate: newEngSub, 
                 inputLanguage: s.inputLanguageName, 
@@ -245,23 +252,20 @@ export default function CaptionCastUI() {
                   return streamToUpdate;
                 }));
               });
-              return updatedStream; // Return stream with original sub added and loading true
+              return updatedStream; 
             }
             return s;
           }));
-        }, 6000); // Subtitle every 6 seconds
+        }, 6000); 
 
         setStreams(prevSs => prevSs.map(s => s.id === stream.id ? { ...s, intervalId: newIntervalId, subtitleIndex: s.subtitleIndex < mockSubtitlesForInputLang.length ? s.subtitleIndex : 0 } : s));
       
       } else if ((!stream.isConnected || !stream.isPlaying) && stream.intervalId) {
-        // Stop interval for this stream
         clearInterval(stream.intervalId);
         setStreams(prevSs => prevSs.map(s => s.id === stream.id ? { ...s, intervalId: undefined } : s));
       }
     });
 
-    // Cleanup function for when the component unmounts or streams array changes significantly
-    // This might not be strictly necessary if the above logic handles clearing intervals correctly when streams are modified/removed
     return () => {
       streams.forEach(s => {
         if (s.intervalId) {
@@ -269,7 +273,7 @@ export default function CaptionCastUI() {
         }
       });
     };
-  }, [streams, toast]); // Effect depends on the streams array
+  }, [streams, toast]); 
 
 
   return (
@@ -366,3 +370,4 @@ export default function CaptionCastUI() {
     </div>
   );
 }
+
