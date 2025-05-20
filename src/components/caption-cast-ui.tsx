@@ -137,12 +137,14 @@ export default function CaptionCastUI() {
         }
         return stream;
       }));
+      // Call toast *after* scheduling state update
       toast({ title: "Disconnected", description: `Disconnected from ${streamToToggle.srtUrl}` });
     } else {
       // CONNECTING
       if (!streamToToggle.srtUrl) {
+        // Call toast directly as no state update follows immediately in this branch
         toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
-        return; 
+        return;
       }
 
       setStreams(prevStreams => prevStreams.map(stream => {
@@ -151,53 +153,63 @@ export default function CaptionCastUI() {
         }
         return stream;
       }));
-      
+      // Call toast *after* scheduling state update
       toast({ title: "Connecting...", description: `Attempting to connect to ${streamToToggle.srtUrl}` });
 
       setTimeout(() => {
         setStreams(currentStreams => currentStreams.map(currentS => {
           if (currentS.id === streamId) {
-            toast({ title: "Success", description: `Connected to ${currentS.srtUrl}` });
             return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
           }
           return currentS;
         }));
+        // Call toast *after* scheduling state update, using the initially captured srtUrl for the message
+        toast({ title: "Success", description: `Connected to ${streamToToggle.srtUrl}` });
       }, 1500);
     }
   }, [streams, toast]);
 
   const handlePlay = useCallback((streamId: string) => {
+    let canPlay = false;
     setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
         if (!stream.isConnected) {
-          toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive" });
-          return stream;
+          return stream; // Don't change state, toast will be handled outside
         }
-        toast({ title: "Stream Control", description: "Stream resumed." });
+        canPlay = true;
         return { ...stream, isPlaying: true };
       }
       return stream;
     }));
-  }, [toast]);
+
+    if (canPlay) {
+      toast({ title: "Stream Control", description: "Stream resumed." });
+    } else {
+      const stream = streams.find(s => s.id === streamId);
+      if (stream) { // Check if stream exists before trying to access its properties
+          toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive" });
+      }
+    }
+  }, [streams, toast]);
 
   const handlePause = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
-        toast({ title: "Stream Control", description: "Stream paused." });
         return { ...stream, isPlaying: false };
       }
       return stream;
     }));
+    toast({ title: "Stream Control", description: "Stream paused." });
   }, [toast]);
 
   const handleStop = useCallback((streamId: string) => {
      setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
-        toast({ title: "Stream Control", description: "Stream stopped. Output might clear." });
         return { ...stream, isPlaying: false, currentBurnInSubtitle: '', subtitleIndex: (ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES).length };
       }
       return stream;
     }));
+    toast({ title: "Stream Control", description: "Stream stopped. Output might clear." });
   }, [toast]);
 
   useEffect(() => {
