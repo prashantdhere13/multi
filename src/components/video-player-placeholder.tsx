@@ -1,6 +1,7 @@
 
 import Image from 'next/image';
 import React, { useEffect, useRef } from 'react';
+import Hls from 'hls.js';
 
 interface VideoPlayerPlaceholderProps {
   hlsStreamUrl?: string;
@@ -10,50 +11,123 @@ interface VideoPlayerPlaceholderProps {
 
 export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlaying }: VideoPlayerPlaceholderProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   useEffect(() => {
     if (videoRef.current) {
+      // Clean up previous HLS instance if it exists
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+
       if (hlsStreamUrl) {
-        videoRef.current.src = hlsStreamUrl;
-        videoRef.current.load(); // Load the new source
+        if (Hls.isSupported()) {
+          const hls = new Hls();
+          hlsRef.current = hls;
+          hls.loadSource(hlsStreamUrl);
+          hls.attachMedia(videoRef.current);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (isPlaying && videoRef.current) {
+              videoRef.current.play().catch(error => {
+                console.error("HLS.js: Error attempting to play video after manifest parsed:", error);
+              });
+            }
+          });
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  console.error('HLS.js: fatal network error encountered', data);
+                  // Try to recover network error
+                  hls.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  console.error('HLS.js: fatal media error encountered', data);
+                  hls.recoverMediaError();
+                  break;
+                default:
+                  // Cannot recover
+                  console.error('HLS.js: fatal error encountered, cannot recover', data);
+                  hls.destroy();
+                  hlsRef.current = null;
+                  break;
+              }
+            } else {
+                console.warn('HLS.js: non-fatal error encountered', data);
+            }
+          });
+        } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+          // Native HLS support (e.g., Safari)
+          videoRef.current.src = hlsStreamUrl;
+          videoRef.current.addEventListener('loadedmetadata', () => {
+             if (isPlaying && videoRef.current) {
+                videoRef.current.play().catch(error => {
+                    console.error("Native HLS: Error attempting to play video after metadata loaded:", error);
+                });
+             }
+          });
+        } else {
+            console.warn("HLS.js is not supported and native HLS playback might not be available.");
+            // Fallback for browsers that might support HLS without explicit check (less likely)
+            videoRef.current.src = hlsStreamUrl;
+        }
       } else {
-        // If hlsStreamUrl is removed, clear the src attribute
+        // If hlsStreamUrl is removed, clear the src attribute and destroy HLS instance
         videoRef.current.removeAttribute('src');
         videoRef.current.load(); // Reset the video element
       }
     }
-  }, [hlsStreamUrl]);
+
+    // Cleanup function
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      if (videoRef.current) {
+        // Remove specific event listeners if added directly for native HLS
+        // Example: videoRef.current.removeEventListener('loadedmetadata', ...);
+      }
+    };
+  }, [hlsStreamUrl]); //isPlaying is intentionally not here, playback is controlled by the next useEffect
 
   useEffect(() => {
     if (videoRef.current) {
-      // Check if src is set and video is ready enough to play to avoid errors
-      if (isPlaying && videoRef.current.src && videoRef.current.readyState >= videoRef.current.HAVE_METADATA) { // HAVE_METADATA or higher
-        videoRef.current.play().catch(error => {
-          // Autoplay restrictions might prevent play, especially if not muted or no user interaction.
-          console.error("Error attempting to play video:", error);
-        });
+      if (isPlaying) {
+        // Check if src/HLS is set and video is ready enough to play
+        // For HLS.js, it often handles readiness internally before MANIFEST_PARSED
+        // For native, readyState check might be more relevant
+        if (videoRef.current.src || hlsRef.current) {
+            // For native HLS, ensure metadata is loaded for play to succeed without errors
+            if (!hlsRef.current && videoRef.current.readyState < videoRef.current.HAVE_METADATA) {
+                // Wait for metadata or trust HLS.js to handle it
+            } else {
+                 videoRef.current.play().catch(error => {
+                    console.error("Video Player: Error attempting to play video:", error);
+                 });
+            }
+        }
       } else {
         videoRef.current.pause();
       }
     }
-  }, [isPlaying, hlsStreamUrl]); // also depend on hlsStreamUrl to re-evaluate play if src changes and isPlaying is true
+  }, [isPlaying, hlsStreamUrl]); // Re-evaluate play if HLS URL changes and isPlaying is true
 
-  // Determine what subtitle text to display
   const displaySubtitleText = currentSubtitle || (hlsStreamUrl && isPlaying && !currentSubtitle ? "Waiting for subtitles..." : "");
 
   return (
     <div className="relative aspect-video w-full max-w-4xl mx-auto bg-black rounded-lg shadow-2xl overflow-hidden border-2 border-card">
-      {hlsStreamUrl ? (
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          controls // Enable default video controls
-          muted // Mute by default to help with autoplay policies
-          playsInline // Important for iOS and inline playback
-          // autoPlay is handled by the useEffect hook based on `isPlaying`
-        />
-      ) : (
-        <Image
+      <video
+        ref={videoRef}
+        className="w-full h-full object-cover"
+        controls // Enable default video controls
+        muted // Mute by default to help with autoplay policies
+        playsInline // Important for iOS and inline playback
+        // autoPlay is handled by the useEffect hooks
+      />
+      {!hlsStreamUrl && (
+         <Image
           src="https://placehold.co/1920x1080.png"
           alt="Video stream placeholder"
           layout="fill"
@@ -80,5 +154,3 @@ export function VideoPlayerPlaceholder({ hlsStreamUrl, currentSubtitle, isPlayin
     </div>
   );
 }
-
-    
