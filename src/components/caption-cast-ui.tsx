@@ -12,9 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tv, XCircle, Languages, Globe, Pencil } from 'lucide-react'; // Removed AudioLines, ListVideo as they are used in sub-components
+import { Tv, XCircle, Languages, Globe, Pencil } from 'lucide-react';
 
-// Mock subtitles, can be expanded or moved to a separate file
 const MOCK_ENGLISH_SUBTITLES = [
   "Hello and welcome to the show.", "Today we have a very special guest.", "Let's give a warm welcome to Dr. Smith.",
   "Thank you for having me.", "The weather is quite nice today, isn't it?", "Indeed, a perfect day for a broadcast.",
@@ -95,11 +94,11 @@ export default function CaptionCastUI() {
     const subSource = SUBTITLE_SOURCES.find(s => s.code === config.subtitleSource);
 
     if (!inputLang || !outputLang || !subSource) {
-      toast({ title: "Error", description: "Invalid language or subtitle source selection.", variant: "destructive" });
+      setTimeout(() => toast({ title: "Error", description: "Invalid language or subtitle source selection.", variant: "destructive" }), 0);
       return;
     }
      if (!config.streamUrl) {
-      toast({ title: "Error", description: "Stream URL (UDP/SRT) cannot be empty.", variant: "destructive" });
+      setTimeout(() => toast({ title: "Error", description: "Stream URL (UDP/SRT) cannot be empty.", variant: "destructive" }), 0);
       return;
     }
 
@@ -120,7 +119,7 @@ export default function CaptionCastUI() {
       hlsOutputUrl: undefined,
     };
     setStreams(prev => [...prev, newStream]);
-    toast({ title: "Stream Added", description: `Configuration for ${config.streamUrl} added.` });
+    setTimeout(() => toast({ title: "Stream Added", description: `Configuration for ${config.streamUrl} added.` }), 0);
   }, [toast]);
 
   const removeStream = useCallback((streamId: string) => {
@@ -131,7 +130,7 @@ export default function CaptionCastUI() {
       }
       return prev.filter(s => s.id !== streamId);
     });
-    toast({ title: "Stream Removed", description: "Stream configuration removed." });
+    setTimeout(() => toast({ title: "Stream Removed", description: "Stream configuration removed." }), 0);
   }, [toast]);
 
   const handleOpenEditDialog = (streamId: string) => {
@@ -153,17 +152,16 @@ export default function CaptionCastUI() {
     const subSource = SUBTITLE_SOURCES.find(s => s.code === updatedConfig.subtitleSource);
 
     if (!inputLang || !outputLang || !subSource) {
-      toast({ title: "Error", description: "Invalid language or subtitle source selection for update.", variant: "destructive" });
+      setTimeout(() => toast({ title: "Error", description: "Invalid language or subtitle source selection for update.", variant: "destructive" }), 0);
       return;
     }
      if (!updatedConfig.streamUrl) {
-      toast({ title: "Error", description: "Stream URL (UDP/SRT) cannot be empty for update.", variant: "destructive" });
+      setTimeout(() => toast({ title: "Error", description: "Stream URL (UDP/SRT) cannot be empty for update.", variant: "destructive" }), 0);
       return;
     }
 
     setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === updatedConfig.id) {
-        // If crucial settings like URL or subtitle source change, reset connection state
         const shouldResetConnection = stream.streamUrl !== updatedConfig.streamUrl ||
                                     stream.subtitleSource !== updatedConfig.subtitleSource ||
                                     stream.sourceTrackId !== updatedConfig.sourceTrackId ||
@@ -177,7 +175,7 @@ export default function CaptionCastUI() {
           inputLanguageName: inputLang.name,
           outputLanguageName: outputLang.name,
           subtitleSourceName: subSource.name,
-          ...(shouldResetConnection && { // Conditionally reset connection/playback state
+          ...(shouldResetConnection && { 
             isConnected: false,
             isLoadingConnection: false,
             isPlaying: false,
@@ -192,26 +190,28 @@ export default function CaptionCastUI() {
       }
       return stream;
     }));
-    toast({ title: "Stream Updated", description: `Configuration for ${updatedConfig.streamUrl} updated. Connection may need to be re-established if critical settings changed.` });
+    setTimeout(() => toast({ title: "Stream Updated", description: `Configuration for ${updatedConfig.streamUrl} updated. Connection may need to be re-established if critical settings changed.` }),0);
     handleCloseEditDialog();
   };
 
 
   const handleConnectToggle = useCallback((streamId: string) => {
-    let toastMessage = "";
-    let toastType: "default" | "destructive" = "default";
-    let streamUrlForToast = ""; // To capture URL before state update
+    let initialToastMessage = "";
+    let initialToastType: "default" | "destructive" = "default";
+    let streamUrlForInitialToast = "";
+    let performConnectionSimulation = false;
 
     setStreams(prevStreams => {
         const streamToToggle = prevStreams.find(s => s.id === streamId);
         if (!streamToToggle) return prevStreams;
-        streamUrlForToast = streamToToggle.streamUrl; // Capture before update
+        streamUrlForInitialToast = streamToToggle.streamUrl;
 
         if (streamToToggle.isConnected) {
             // DISCONNECTING
             if (streamToToggle.intervalId) clearInterval(streamToToggle.intervalId);
-            toastMessage = `Disconnected from ${streamUrlForToast}`;
-            toastType = "default";
+            initialToastMessage = `Disconnected from ${streamUrlForInitialToast}`;
+            initialToastType = "default";
+            performConnectionSimulation = false;
             return prevStreams.map(stream =>
                 stream.id === streamId ? {
                     ...stream,
@@ -227,49 +227,43 @@ export default function CaptionCastUI() {
                 } : stream
             );
         } else {
-            // CONNECTING
-            if (!streamUrlForToast) {
-                toastMessage = "Stream URL (UDP/SRT) cannot be empty.";
-                toastType = "destructive";
-                // Return prevStreams because this toast should appear without a state change that attempts connection
-                // The toast will be shown after this function completes.
+            // ATTEMPTING TO CONNECT
+            if (!streamUrlForInitialToast) {
+                initialToastMessage = "Stream URL (UDP/SRT) cannot be empty.";
+                initialToastType = "destructive";
+                performConnectionSimulation = false;
                 return prevStreams; 
             }
-            toastMessage = `Attempting to connect to ${streamUrlForToast}`;
-            toastType = "default"; // For the initial "Attempting to connect" message
+            initialToastMessage = `Attempting to connect to ${streamUrlForInitialToast}`;
+            initialToastType = "default";
+            performConnectionSimulation = true;
             return prevStreams.map(stream =>
-                stream.id === streamId ? { ...stream, isLoadingConnection: true } : stream
+                stream.id === streamId ? { ...stream, isLoadingConnection: true, isConnected: false } : stream
             );
         }
     });
 
-    // Show toast after setStreams has been called
-    if (toastMessage) {
-      if(toastType === "destructive" && !streamUrlForToast){ // Special case for empty URL toast
-        toast({ title: "Error", description: toastMessage, variant: "destructive" });
-        return; // Don't proceed with connection attempt logic
-      }
-      toast({ title: toastType === "default" ? "Stream Status" : "Error", description: toastMessage, variant: toastType });
+    if (initialToastMessage) {
+      setTimeout(() => toast({ title: initialToastType === "default" ? "Stream Status" : "Error", description: initialToastMessage, variant: initialToastType }), 0);
     }
     
-    // If connecting, simulate delay and then update state
-    const streamToConnect = streams.find(s => s.id === streamId); // Re-fetch for current state.
-    if (streamToConnect && !streamToConnect.isConnected && streamToConnect.isLoadingConnection) {
+    if (performConnectionSimulation) {
       setTimeout(() => {
-        let connectedSuccessfully = false;
-        let finalStreamUrlForToastMessage = '';
-        let connectionToastMessage = '';
-        let connectionToastType: "default" | "destructive" = "default";
+        let finalToastMessage = '';
+        let finalToastType: "default" | "destructive" = "default";
         
         setStreams(currentStreams => {
-          const streamExists = currentStreams.some(s => s.id === streamId);
-          if (!streamExists) { 
-            return currentStreams; 
+          const streamToFinalize = currentStreams.find(s => s.id === streamId);
+          if (!streamToFinalize || !streamToFinalize.isLoadingConnection) {
+            // Stream might have been removed, or disconnected quickly. Avoid further action or toast.
+            return currentStreams;
           }
+          
+          // Simulate success
+          finalToastMessage = `Connected to ${streamToFinalize.streamUrl}`;
+          finalToastType = "default";
           return currentStreams.map(currentS => {
             if (currentS.id === streamId) {
-              connectedSuccessfully = true; 
-              finalStreamUrlForToastMessage = currentS.streamUrl;
               return { 
                 ...currentS, 
                 isConnected: true, 
@@ -282,23 +276,17 @@ export default function CaptionCastUI() {
           });
         });
 
-        if (connectedSuccessfully) {
-            connectionToastMessage = `Connected to ${finalStreamUrlForToastMessage || streamUrlForToast}`;
-            connectionToastType = "default";
-        } else {
-            connectionToastMessage = `Failed to connect to ${finalStreamUrlForToastMessage || streamUrlForToast}`;
-            connectionToastType = "destructive";
-        }
-        if (connectionToastMessage) { 
-           toast({ title: connectionToastType === "default" ? "Success" : "Error", description: connectionToastMessage, variant: connectionToastType });
+        if (finalToastMessage) { 
+           setTimeout(() => toast({ title: finalToastType === "default" ? "Success" : "Error", description: finalToastMessage, variant: finalToastType }),0);
         }
       }, 1500);
     }
-  }, [streams, toast]); // streams dependency is important here
+  }, [toast]);
 
  const handlePlay = useCallback((streamId: string) => {
     let playToastMessage = "";
     let playToastType: "default" | "destructive" = "default";
+    let shouldToast = false;
 
     setStreams(prevStreams => {
         const updatedStreams = prevStreams.map(stream => {
@@ -306,20 +294,21 @@ export default function CaptionCastUI() {
                 if (!stream.isConnected) {
                     playToastMessage = "Not connected to a stream.";
                     playToastType = "destructive";
+                    shouldToast = true;
                     return stream; 
                 }
-                if (stream.isPlaying) { // Already playing
+                if (stream.isPlaying) { 
                     return stream;
                 }
                 playToastMessage = "Stream resumed.";
                 playToastType = "default";
+                shouldToast = true;
                 return { ...stream, isPlaying: true };
             }
             return stream;
         });
         
-        // Defer toast call
-        if (playToastMessage) {
+        if (shouldToast && playToastMessage) {
             setTimeout(() => toast({ title: playToastType === "default" ? "Stream Control" : "Error", description: playToastMessage, variant: playToastType }), 0);
         }
         return updatedStreams;
@@ -328,7 +317,7 @@ export default function CaptionCastUI() {
 
   const handlePause = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
-      if (stream.id === streamId && stream.isPlaying) { // Only update if actually pausing
+      if (stream.id === streamId && stream.isPlaying) { 
         setTimeout(() => toast({ title: "Stream Control", description: "Stream paused." }),0);
         return { ...stream, isPlaying: false };
       }
@@ -339,7 +328,6 @@ export default function CaptionCastUI() {
   const handleStop = useCallback((streamId: string) => {
      setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
-        // Get the correct mock subtitles array length for resetting the index
         const mockSubtitlesForInputLang = ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES;
         setTimeout(() => toast({ title: "Stream Control", description: "Stream stopped. Output might clear." }),0);
         return { ...stream, isPlaying: false, currentBurnInSubtitle: '', subtitleIndex: mockSubtitlesForInputLang.length };
@@ -386,7 +374,7 @@ export default function CaptionCastUI() {
               })
               .catch(error => {
                 console.error("Translation error for stream " + s.id + ":", error);
-                toast({ title: "Translation Error", description: `Stream ${s.streamUrl}: Failed to translate.`, variant: "destructive" });
+                setTimeout(() => toast({ title: "Translation Error", description: `Stream ${s.streamUrl}: Failed to translate.`, variant: "destructive" }), 0);
                 setStreams(currentErroredStreams => currentErroredStreams.map(streamToUpdate => {
                   if (streamToUpdate.id === stream.id) {
                     return {
@@ -546,3 +534,4 @@ export default function CaptionCastUI() {
     </div>
   );
 }
+
