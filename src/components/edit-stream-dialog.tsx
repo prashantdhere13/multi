@@ -52,8 +52,12 @@ export function EditStreamDialog({
 
   const handleSaveChanges = () => {
     if (!streamData) return;
-    if (!currentStreamUrl || !currentInputLanguage || !currentOutputLanguage || !currentSubtitleSource) {
-      alert("Please fill in all required fields: Stream URL, Input Language, Output Language, and Subtitle Source.");
+    if (!currentStreamUrl) {
+        alert("Stream URL (UDP/SRT) cannot be empty.");
+        return;
+    }
+    if (!currentInputLanguage || !currentOutputLanguage || !currentSubtitleSource) {
+      alert("Please fill in all required fields: Input Language, Output Language, and Subtitle Source.");
       return;
     }
     onSave({
@@ -69,6 +73,19 @@ export function EditStreamDialog({
   if (!isOpen || !streamData) {
     return null;
   }
+
+  const getSourceTrackLabel = () => {
+    if (currentSubtitleSource === 'teletext') return "Teletext Page Number";
+    if (currentSubtitleSource === 'audio') return "Audio Track ID/Language";
+    return "Source Track ID/Language";
+  };
+
+  const getSourceTrackPlaceholder = () => {
+    if (currentSubtitleSource === 'teletext') return "e.g., 888";
+    if (currentSubtitleSource === 'audio') return "e.g., 'eng', 'Track 2'";
+    return "e.g., 'PID 101'";
+  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -142,14 +159,14 @@ export function EditStreamDialog({
           {currentSubtitleSource !== 'mock' && (
             <div className="space-y-1">
               <Label htmlFor="editSourceTrackId" className="text-sm">
-                Source Track ID/Language <span className="text-xs text-muted-foreground">(Optional)</span>
+                {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
               </Label>
               <Input
                 id="editSourceTrackId"
                 value={currentSourceTrackId}
                 onChange={(e) => setCurrentSourceTrackId(e.target.value)}
                 className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
-                placeholder="e.g., 'eng', 'PID 101'"
+                placeholder={getSourceTrackPlaceholder()}
               />
             </div>
           )}

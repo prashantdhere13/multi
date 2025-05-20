@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Cable, PlusCircle, ListVideo, AudioLines } from 'lucide-react'; // Added ListVideo, AudioLines
+import { Cable, PlusCircle, ListVideo, AudioLines } from 'lucide-react';
 import type { LANGUAGES, SUBTITLE_SOURCES, StreamInstanceConfig } from './caption-cast-ui';
 
 interface InputConfigSectionProps {
@@ -25,8 +25,13 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
 
 
   const handleSubmit = () => {
-    if (!streamUrl || !inputLanguage || !outputLanguage || !subtitleSource) {
-      alert("Please fill in all required fields: Stream URL, Input Language, Output Language, and Subtitle Source.");
+    // Basic validation for streamUrl as it's always required
+    if (!streamUrl) {
+        alert("Stream URL (UDP/SRT) cannot be empty.");
+        return;
+    }
+    if (!inputLanguage || !outputLanguage || !subtitleSource) {
+      alert("Please fill in all required fields: Input Language, Output Language, and Subtitle Source.");
       return;
     }
     onAddStream({ 
@@ -39,6 +44,18 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
     setStreamUrl(''); 
     setSourceTrackId('');
     // Optionally reset languages or subtitleSource, or keep them for faster multiple additions
+  };
+
+  const getSourceTrackLabel = () => {
+    if (subtitleSource === 'teletext') return "Teletext Page Number";
+    if (subtitleSource === 'audio') return "Audio Track ID/Language";
+    return "Source Track ID/Language";
+  };
+
+  const getSourceTrackPlaceholder = () => {
+    if (subtitleSource === 'teletext') return "e.g., 888";
+    if (subtitleSource === 'audio') return "e.g., 'eng', 'Track 2'";
+    return "e.g., 'eng', 'PID 101'";
   };
 
   return (
@@ -58,7 +75,7 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
           <Input
             id="newStreamUrl"
             type="url"
-            placeholder="udp://example.com:5000 or srt://example.com:1234"
+            placeholder="udp://... or srt://..."
             value={streamUrl}
             onChange={(e) => setStreamUrl(e.target.value)}
             className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
@@ -119,12 +136,12 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
           {subtitleSource !== 'mock' && (
             <div className="space-y-2">
               <Label htmlFor="sourceTrackId" className="text-sm font-medium">
-                Source Track ID/Language <span className="text-xs text-muted-foreground">(Optional)</span>
+                {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
               </Label>
               <Input
                 id="sourceTrackId"
                 type="text"
-                placeholder="e.g., 'eng', 'PID 101', 'Track 2'"
+                placeholder={getSourceTrackPlaceholder()}
                 value={sourceTrackId}
                 onChange={(e) => setSourceTrackId(e.target.value)}
                 className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
