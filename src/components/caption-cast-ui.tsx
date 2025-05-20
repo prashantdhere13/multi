@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -8,137 +9,267 @@ import { VideoPlayerPlaceholder } from '@/components/video-player-placeholder';
 import { translateSubtitles, type TranslateSubtitlesOutput } from '@/ai/flows/translate-subtitles';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { Tv } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tv, XCircle, Languages, Globe } from 'lucide-react';
+import type { Geist_Sans } from 'next/font/google';
 
+// Mock subtitles, can be expanded or moved to a separate file
 const MOCK_ENGLISH_SUBTITLES = [
-  "Hello and welcome to the show.",
-  "Today we have a very special guest.",
-  "Let's give a warm welcome to Dr. Smith.",
-  "Thank you for having me.",
-  "The weather is quite nice today, isn't it?",
-  "Indeed, a perfect day for a broadcast.",
-  "We'll be discussing recent advancements in technology.",
-  "Stay tuned for more exciting content.",
-  "And now, a word from our sponsors.",
-  "We'll be right back after the break."
+  "Hello and welcome to the show.", "Today we have a very special guest.", "Let's give a warm welcome to Dr. Smith.",
+  "Thank you for having me.", "The weather is quite nice today, isn't it?", "Indeed, a perfect day for a broadcast.",
+  "We'll be discussing recent advancements in technology.", "Stay tuned for more exciting content.",
+  "And now, a word from our sponsors.", "We'll be right back after the break."
+];
+const MOCK_GERMAN_SUBTITLES = [
+  "Hallo und willkommen zur Show.", "Heute haben wir einen ganz besonderen Gast.", "Begrüßen wir Dr. Schmidt herzlich.",
+  "Danke für die Einladung.", "Das Wetter ist heute ziemlich schön, nicht wahr?", "In der Tat, ein perfekter Tag für eine Sendung.",
+  "Wir werden die neuesten technologischen Fortschritte diskutieren.", "Bleiben Sie dran für weitere spannende Inhalte.",
+  "Und nun ein Wort von unseren Sponsoren.", "Wir sind gleich nach der Pause wieder da."
+];
+const MOCK_SPANISH_SUBTITLES = [
+  "Hola y bienvenidos al programa.", "Hoy tenemos un invitado muy especial.", "Demos una cálida bienvenida al Dr. García.",
+  "Gracias por invitarme.", "El tiempo está bastante agradable hoy, ¿verdad?", "Efectivamente, un día perfecto para una transmisión.",
+  "Discutiremos los avances recientes en tecnología.", "Estén atentos para más contenido emocionante.",
+  "Y ahora, unas palabras de nuestros patrocinadores.", "Volveremos después de la pausa."
 ];
 
-export default function CaptionCastUI() {
-  const [srtUrl, setSrtUrl] = useState<string>('srt://example.com:1234'); // Default for demo
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [isLoadingConnection, setIsLoadingConnection] = useState<boolean>(false);
-  
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  
-  const [originalSubtitles, setOriginalSubtitles] = useState<string[]>([]);
-  const [translatedSubtitles, setTranslatedSubtitles] = useState<string[]>([]);
-  const [currentBurnInSubtitle, setCurrentBurnInSubtitle] = useState<string>('');
-  
-  const [isLoadingTranslation, setIsLoadingTranslation] = useState<boolean>(false);
-  const [subtitleIndex, setSubtitleIndex] = useState<number>(0);
+const ALL_MOCK_SUBTITLES: Record<string, string[]> = {
+  'en': MOCK_ENGLISH_SUBTITLES,
+  'de': MOCK_GERMAN_SUBTITLES,
+  'es': MOCK_SPANISH_SUBTITLES,
+  // Add more languages and their mock subtitles as needed
+};
 
+export const LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'de', name: 'German' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'fr', name: 'French' },
+  { code: 'it', name: 'Italian' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'zh', name: 'Chinese (Simplified)' },
+];
+
+export interface StreamInstance {
+  id: string;
+  srtUrl: string;
+  inputLanguage: string;
+  outputLanguage: string;
+  inputLanguageName: string;
+  outputLanguageName: string;
+  isConnected: boolean;
+  isLoadingConnection: boolean;
+  isPlaying: boolean;
+  originalSubtitles: string[];
+  translatedSubtitles: string[];
+  currentBurnInSubtitle: string;
+  subtitleIndex: number;
+  isLoadingTranslation: boolean;
+  intervalId?: NodeJS.Timeout;
+}
+
+export default function CaptionCastUI() {
+  const [streams, setStreams] = useState<StreamInstance[]>([]);
   const { toast } = useToast();
 
-  const handleConnectToggle = useCallback(() => {
-    if (isConnected) {
-      // Disconnect
-      setIsConnected(false);
-      setIsPlaying(false);
-      setOriginalSubtitles([]);
-      setTranslatedSubtitles([]);
-      setCurrentBurnInSubtitle('');
-      setSubtitleIndex(0);
-      toast({ title: "Disconnected", description: `Disconnected from ${srtUrl}` });
+  const addStream = useCallback((config: { srtUrl: string; inputLanguage: string; outputLanguage: string }) => {
+    const inputLang = LANGUAGES.find(l => l.code === config.inputLanguage);
+    const outputLang = LANGUAGES.find(l => l.code === config.outputLanguage);
+
+    if (!inputLang || !outputLang) {
+      toast({ title: "Error", description: "Invalid language selection.", variant: "destructive" });
       return;
     }
 
-    if (!srtUrl) {
-      toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
-      return;
-    }
-    setIsLoadingConnection(true);
-    setTimeout(() => {
-      setIsConnected(true);
-      setIsLoadingConnection(false);
-      toast({ title: "Success", description: `Connected to ${srtUrl}` });
-      setIsPlaying(true); 
-    }, 1500);
-  }, [srtUrl, toast, isConnected]);
+    const newStream: StreamInstance = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...config,
+      inputLanguageName: inputLang.name,
+      outputLanguageName: outputLang.name,
+      isConnected: false,
+      isLoadingConnection: false,
+      isPlaying: false,
+      originalSubtitles: [],
+      translatedSubtitles: [],
+      currentBurnInSubtitle: '',
+      subtitleIndex: 0,
+      isLoadingTranslation: false,
+    };
+    setStreams(prev => [...prev, newStream]);
+    toast({ title: "Stream Added", description: `Configuration for ${config.srtUrl} added.` });
+  }, [toast]);
 
-  const handlePlay = () => {
-    if (!isConnected) {
-      toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive"});
-      return;
-    }
-    setIsPlaying(true);
-    toast({ title: "Stream Control", description: "Stream resumed." });
-  };
+  const removeStream = useCallback((streamId: string) => {
+    setStreams(prev => {
+      const streamToRemove = prev.find(s => s.id === streamId);
+      if (streamToRemove?.intervalId) {
+        clearInterval(streamToRemove.intervalId);
+      }
+      return prev.filter(s => s.id !== streamId);
+    });
+    toast({ title: "Stream Removed", description: "Stream configuration removed." });
+  }, [toast]);
 
-  const handlePause = () => {
-    setIsPlaying(false);
-    toast({ title: "Stream Control", description: "Stream paused." });
-  };
+  const handleConnectToggle = useCallback((streamId: string) => {
+    setStreams(prevStreams => prevStreams.map(stream => {
+      if (stream.id === streamId) {
+        if (stream.isConnected) { // Currently connected, so disconnect
+          if (stream.intervalId) clearInterval(stream.intervalId);
+          toast({ title: "Disconnected", description: `Disconnected from ${stream.srtUrl}` });
+          return {
+            ...stream,
+            isConnected: false,
+            isPlaying: false,
+            isLoadingConnection: false,
+            originalSubtitles: [],
+            translatedSubtitles: [],
+            currentBurnInSubtitle: '',
+            subtitleIndex: 0,
+            intervalId: undefined,
+          };
+        } else { // Currently disconnected, so connect
+          if (!stream.srtUrl) {
+            toast({ title: "Error", description: "SRT URL cannot be empty.", variant: "destructive" });
+            return stream;
+          }
+          toast({ title: "Connecting...", description: `Attempting to connect to ${stream.srtUrl}` });
+          // Simulate connection
+          setTimeout(() => {
+            setStreams(s => s.map(currentS => {
+              if (currentS.id === streamId) {
+                toast({ title: "Success", description: `Connected to ${currentS.srtUrl}` });
+                return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
+              }
+              return currentS;
+            }));
+          }, 1500);
+          return { ...stream, isLoadingConnection: true };
+        }
+      }
+      return stream;
+    }));
+  }, [toast]);
 
-  const handleStop = () => {
-    setIsPlaying(false);
-    // For a real "Stop", one might want to keep the connection but stop processing.
-    // Here, we'll reset subtitles as if the stream ended.
-    setCurrentBurnInSubtitle('');
-    setSubtitleIndex(MOCK_ENGLISH_SUBTITLES.length); // Effectively stops new subtitles
-    toast({ title: "Stream Control", description: "Stream stopped. To disconnect, use the 'Disconnect' button." });
-  };
+  const handlePlay = useCallback((streamId: string) => {
+    setStreams(prevStreams => prevStreams.map(stream => {
+      if (stream.id === streamId) {
+        if (!stream.isConnected) {
+          toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive" });
+          return stream;
+        }
+        toast({ title: "Stream Control", description: "Stream resumed." });
+        return { ...stream, isPlaying: true };
+      }
+      return stream;
+    }));
+  }, [toast]);
+
+  const handlePause = useCallback((streamId: string) => {
+    setStreams(prevStreams => prevStreams.map(stream => {
+      if (stream.id === streamId) {
+        toast({ title: "Stream Control", description: "Stream paused." });
+        return { ...stream, isPlaying: false };
+      }
+      return stream;
+    }));
+  }, [toast]);
+
+  const handleStop = useCallback((streamId: string) => {
+     setStreams(prevStreams => prevStreams.map(stream => {
+      if (stream.id === streamId) {
+        toast({ title: "Stream Control", description: "Stream stopped. Output might clear." });
+        // Keep connection, but stop playback and clear current subtitle.
+        // Optionally, could also clear subtitle arrays here.
+        return { ...stream, isPlaying: false, currentBurnInSubtitle: '', subtitleIndex: (ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES).length };
+      }
+      return stream;
+    }));
+  }, [toast]);
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | undefined = undefined;
+    streams.forEach(stream => {
+      if (stream.isConnected && stream.isPlaying && !stream.intervalId) {
+        // Start interval for this stream
+        const mockSubtitlesForInputLang = ALL_MOCK_SUBTITLES[stream.inputLanguage] || MOCK_ENGLISH_SUBTITLES;
 
-    if (isConnected && isPlaying) {
-      const processNextSubtitle = async () => {
-        if (subtitleIndex >= MOCK_ENGLISH_SUBTITLES.length) {
-          // Loop subtitles for demo, or stop
-          // setSubtitleIndex(0); 
-          // setOriginalSubtitles([]); 
-          // setTranslatedSubtitles([]);
-          // toast({ title: "Info", description: "Finished mock subtitles. Pausing."});
-          // setIsPlaying(false); // Stop playing after one run
-          // return;
-          
-          // For continuous demo, reset index and clear subtitles
-          setSubtitleIndex(0);
-          setOriginalSubtitles([]);
-          setTranslatedSubtitles([]);
-          // No early return, will process index 0 immediately
-        }
+        const newIntervalId = setInterval(async () => {
+          setStreams(prevSs => prevSs.map(s => {
+            if (s.id === stream.id && s.isConnected && s.isPlaying) { // Double check state inside interval
+              let currentSubIndex = s.subtitleIndex;
+              if (currentSubIndex >= mockSubtitlesForInputLang.length) {
+                currentSubIndex = 0; // Loop subtitles
+                 // return {...s, subtitleIndex: 0, originalSubtitles: [], translatedSubtitles: []}; // Clears history on loop
+              }
+              
+              const newEngSub = mockSubtitlesForInputLang[currentSubIndex];
+              const updatedStream = { ...s, originalSubtitles: [...s.originalSubtitles.slice(-9), newEngSub], isLoadingTranslation: true };
+              
+              // Perform translation
+              translateSubtitles({ 
+                subtitlesToTranslate: newEngSub, 
+                inputLanguage: s.inputLanguageName, 
+                outputLanguage: s.outputLanguageName 
+              })
+              .then(translationOutput => {
+                const newTranslatedSub = translationOutput.translatedSubtitles;
+                setStreams(currentUpdatedStreams => currentUpdatedStreams.map(streamToUpdate => {
+                  if (streamToUpdate.id === stream.id) {
+                    return {
+                      ...streamToUpdate,
+                      translatedSubtitles: [...streamToUpdate.translatedSubtitles.slice(-9), newTranslatedSub],
+                      currentBurnInSubtitle: newTranslatedSub,
+                      isLoadingTranslation: false,
+                      subtitleIndex: currentSubIndex + 1
+                    };
+                  }
+                  return streamToUpdate;
+                }));
+              })
+              .catch(error => {
+                console.error("Translation error for stream " + s.id + ":", error);
+                toast({ title: "Translation Error", description: `Stream ${s.srtUrl}: Failed to translate.`, variant: "destructive" });
+                setStreams(currentErroredStreams => currentErroredStreams.map(streamToUpdate => {
+                  if (streamToUpdate.id === stream.id) {
+                    return {
+                      ...streamToUpdate,
+                      translatedSubtitles: [...streamToUpdate.translatedSubtitles.slice(-9), "[Translation Failed]"],
+                      currentBurnInSubtitle: "[Translation Failed]",
+                      isLoadingTranslation: false,
+                      subtitleIndex: currentSubIndex + 1
+                    };
+                  }
+                  return streamToUpdate;
+                }));
+              });
+              return updatedStream; // Return stream with original sub added and loading true
+            }
+            return s;
+          }));
+        }, 6000); // Subtitle every 6 seconds
 
-        const currentSubIndex = subtitleIndex % MOCK_ENGLISH_SUBTITLES.length; // Ensure looping
-        const newEngSub = MOCK_ENGLISH_SUBTITLES[currentSubIndex];
-        
-        setOriginalSubtitles(prev => [...prev.slice(-9), newEngSub]);
-        
-        setIsLoadingTranslation(true);
-        try {
-          const translationOutput: TranslateSubtitlesOutput = await translateSubtitles({ englishSubtitles: newEngSub });
-          const newGerSub = translationOutput.germanSubtitles;
-          setTranslatedSubtitles(prev => [...prev.slice(-9), newGerSub]);
-          setCurrentBurnInSubtitle(newGerSub);
-        } catch (error) {
-          console.error("Translation error:", error);
-          toast({ title: "Translation Error", description: "Failed to translate subtitles. Check console for details.", variant: "destructive" });
-          setTranslatedSubtitles(prev => [...prev.slice(-9), "[Translation Failed]"]);
-          setCurrentBurnInSubtitle("[Translation Failed]");
-        } finally {
-          setIsLoadingTranslation(false);
-          setSubtitleIndex(prev => prev + 1);
-        }
-      };
+        setStreams(prevSs => prevSs.map(s => s.id === stream.id ? { ...s, intervalId: newIntervalId, subtitleIndex: s.subtitleIndex < mockSubtitlesForInputLang.length ? s.subtitleIndex : 0 } : s));
       
-      processNextSubtitle(); // Initial call for the current state
-      intervalId = setInterval(processNextSubtitle, 6000); // New subtitle every 6 seconds
-    }
+      } else if ((!stream.isConnected || !stream.isPlaying) && stream.intervalId) {
+        // Stop interval for this stream
+        clearInterval(stream.intervalId);
+        setStreams(prevSs => prevSs.map(s => s.id === stream.id ? { ...s, intervalId: undefined } : s));
+      }
+    });
 
+    // Cleanup function for when the component unmounts or streams array changes significantly
+    // This might not be strictly necessary if the above logic handles clearing intervals correctly when streams are modified/removed
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      streams.forEach(s => {
+        if (s.intervalId) {
+          clearInterval(s.intervalId);
+        }
+      });
     };
-  }, [isConnected, isPlaying, subtitleIndex, toast]);
+  }, [streams, toast]); // Effect depends on the streams array
 
 
   return (
@@ -148,41 +279,85 @@ export default function CaptionCastUI() {
           <Tv className="h-10 w-10 text-primary mr-3" />
           <h1 className="text-4xl font-bold tracking-tight">CaptionCast</h1>
         </div>
-        <p className="text-lg text-muted-foreground">Real-time Subtitle Translation & Broadcast Simulation</p>
+        <p className="text-lg text-muted-foreground">Multi-Stream Real-time Subtitle Translation & Broadcast Simulation</p>
       </header>
 
-      <main className="space-y-8 max-w-6xl mx-auto">
-        <InputConfigSection
-          srtUrl={srtUrl}
-          setSrtUrl={setSrtUrl}
-          onConnect={handleConnectToggle}
-          isConnected={isConnected}
-          isLoading={isLoadingConnection}
-        />
+      <main className="space-y-8 max-w-7xl mx-auto">
+        <InputConfigSection onAddStream={addStream} languages={LANGUAGES} />
         
         <Separator className="my-6 bg-border/50" />
 
-        {isConnected && (
-          <div className="space-y-8">
-            <VideoPlayerPlaceholder currentSubtitle={currentBurnInSubtitle} isConnected={isConnected} />
-            
-            <SubtitleDisplaySection
-              originalSubtitles={originalSubtitles}
-              translatedSubtitles={translatedSubtitles}
-              isLoadingTranslation={isLoadingTranslation}
-            />
-            
-            <Separator className="my-6 bg-border/50" />
-          </div>
+        {streams.length === 0 && (
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center"><Globe className="mr-2 h-5 w-5 text-muted-foreground"/>No Streams Configured</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">Use the section above to add a new SRT stream input.</p>
+            </CardContent>
+          </Card>
         )}
-        
-        <StreamControlSection
-          isPlaying={isPlaying}
-          onPlay={handlePlay}
-          onPause={handlePause}
-          onStop={handleStop}
-          isStreamActive={isConnected}
-        />
+
+        <div className="space-y-12">
+          {streams.map((stream) => (
+            <Card key={stream.id} className="shadow-xl overflow-hidden">
+              <CardHeader className="bg-card-foreground/5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-2xl mb-1">Stream: {stream.srtUrl || "Not Set"}</CardTitle>
+                    <CardDescription>
+                      Translate from {stream.inputLanguageName} to {stream.outputLanguageName}
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-col items-end space-y-2">
+                     <Button 
+                        onClick={() => handleConnectToggle(stream.id)} 
+                        disabled={stream.isLoadingConnection || !stream.srtUrl} 
+                        variant={stream.isConnected ? "outline" : "default"} 
+                        className={`${stream.isConnected ? 'border-green-500 text-green-500 hover:bg-green-500/10' : 'bg-primary hover:bg-primary/90 text-primary-foreground'} transition-all duration-150 ease-in-out`}
+                        size="sm"
+                      >
+                        {stream.isLoadingConnection ? <Languages className="mr-2 h-4 w-4 animate-spin" /> : (stream.isConnected ? <Globe className="mr-2 h-4 w-4" /> : <Globe className="mr-2 h-4 w-4" />)}
+                        {stream.isLoadingConnection ? 'Connecting...' : stream.isConnected ? 'Disconnect' : 'Connect'}
+                      </Button>
+                    <Button variant="ghost" size="icon" onClick={() => removeStream(stream.id)} className="text-destructive/70 hover:text-destructive hover:bg-destructive/10">
+                      <XCircle className="h-5 w-5" />
+                      <span className="sr-only">Remove Stream</span>
+                    </Button>
+                  </div>
+                </div>
+                 {stream.isLoadingConnection && <p className="text-sm text-accent animate-pulse mt-2">Attempting to connect...</p>}
+                 {!stream.isLoadingConnection && stream.isConnected && <p className="text-sm text-green-400 mt-2">Successfully connected.</p>}
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {stream.isConnected && (
+                  <>
+                    <VideoPlayerPlaceholder currentSubtitle={stream.currentBurnInSubtitle} isConnected={stream.isConnected} />
+                    <SubtitleDisplaySection
+                      originalSubtitles={stream.originalSubtitles}
+                      translatedSubtitles={stream.translatedSubtitles}
+                      isLoadingTranslation={stream.isLoadingTranslation}
+                      inputLanguageName={stream.inputLanguageName}
+                      outputLanguageName={stream.outputLanguageName}
+                    />
+                    <StreamControlSection
+                      isPlaying={stream.isPlaying}
+                      onPlay={() => handlePlay(stream.id)}
+                      onPause={() => handlePause(stream.id)}
+                      onStop={() => handleStop(stream.id)}
+                      isStreamActive={stream.isConnected}
+                    />
+                  </>
+                )}
+                {!stream.isConnected && (
+                  <div className="text-center py-10">
+                    <p className="text-muted-foreground">Connect to the stream to view player and subtitles.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </main>
       <footer className="mt-12 pt-8 border-t border-border/50 text-center text-sm text-muted-foreground">
         <p>&copy; {new Date().getFullYear()} CaptionCast. All rights reserved.</p>
