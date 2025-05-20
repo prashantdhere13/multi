@@ -56,7 +56,7 @@ export const LANGUAGES = [
 
 export interface StreamInstance {
   id: string;
-  streamUrl: string; // Renamed from srtUrl
+  streamUrl: string; 
   inputLanguage: string;
   outputLanguage: string;
   inputLanguageName: string;
@@ -117,7 +117,9 @@ export default function CaptionCastUI() {
   const handleConnectToggle = useCallback((streamId: string) => {
     const streamToToggle = streams.find(s => s.id === streamId);
     if (!streamToToggle) return;
-
+  
+    const currentStreamUrl = streamToToggle.streamUrl; // Capture for use in toasts
+  
     if (streamToToggle.isConnected) {
       // DISCONNECTING
       setStreams(prevStreams => prevStreams.map(stream => {
@@ -137,39 +139,44 @@ export default function CaptionCastUI() {
         }
         return stream;
       }));
-      toast({ title: "Disconnected", description: `Disconnected from ${streamToToggle.streamUrl}` });
+      // Toast after state update is scheduled
+      toast({ title: "Disconnected", description: `Disconnected from ${currentStreamUrl}` });
     } else {
       // CONNECTING
-      if (!streamToToggle.streamUrl) {
-        toast({ title: "Error", description: "UDP Stream URL cannot be empty.", variant: "destructive" });
+      if (!currentStreamUrl) {
+        toast({ title: "Error", description: "Stream URL cannot be empty.", variant: "destructive" });
         return;
       }
-
+  
       setStreams(prevStreams => prevStreams.map(stream => {
         if (stream.id === streamId) {
           return { ...stream, isLoadingConnection: true };
         }
         return stream;
       }));
-      toast({ title: "Connecting...", description: `Attempting to connect to ${streamToToggle.streamUrl}` });
-
+      // Toast after state update is scheduled
+      toast({ title: "Connecting...", description: `Attempting to connect to ${currentStreamUrl}` });
+  
       // Simulate connection attempt
       setTimeout(() => {
         let connectedSuccessfully = false;
+        let finalStreamUrlForToast = ''; // To ensure we use the state *after* this update
+  
         setStreams(currentStreams => currentStreams.map(currentS => {
           if (currentS.id === streamId) {
             // Simulate success for this example
             connectedSuccessfully = true;
+            finalStreamUrlForToast = currentS.streamUrl; // Capture from the potentially updated state
             return { ...currentS, isConnected: true, isLoadingConnection: false, isPlaying: true };
           }
           return currentS;
         }));
-
+  
+        // Toasts after the setStreams inside setTimeout is scheduled
         if (connectedSuccessfully) {
-           toast({ title: "Success", description: `Connected to ${streamToToggle.streamUrl}` });
+           toast({ title: "Success", description: `Connected to ${finalStreamUrlForToast || currentStreamUrl}` });
         } else {
-          // This part might not be reached in current simple timeout logic, but good for robustness
-          toast({ title: "Error", description: `Failed to connect to ${streamToToggle.streamUrl}`, variant: "destructive" });
+          toast({ title: "Error", description: `Failed to connect to ${finalStreamUrlForToast || currentStreamUrl}`, variant: "destructive" });
         }
       }, 1500);
     }
@@ -177,26 +184,28 @@ export default function CaptionCastUI() {
 
   const handlePlay = useCallback((streamId: string) => {
     let canPlay = false;
+    let streamDescription = "";
+  
     setStreams(prevStreams => prevStreams.map(stream => {
       if (stream.id === streamId) {
         if (!stream.isConnected) {
+          streamDescription = "Not connected to a stream.";
           return stream; 
         }
         canPlay = true;
+        streamDescription = "Stream resumed.";
         return { ...stream, isPlaying: true };
       }
       return stream;
     }));
-
+  
+    // Toast after state update
     if (canPlay) {
-      toast({ title: "Stream Control", description: "Stream resumed." });
+      toast({ title: "Stream Control", description: streamDescription });
     } else {
-      const stream = streams.find(s => s.id === streamId);
-      if (stream) { 
-          toast({ title: "Error", description: "Not connected to a stream.", variant: "destructive" });
-      }
+      toast({ title: "Error", description: streamDescription, variant: "destructive" });
     }
-  }, [streams, toast]);
+  }, [toast]); // streams dependency removed to avoid stale closures issues with toast after setStreams
 
   const handlePause = useCallback((streamId: string) => {
     setStreams(prevStreams => prevStreams.map(stream => {
@@ -315,7 +324,7 @@ export default function CaptionCastUI() {
               <CardTitle className="text-xl flex items-center"><Globe className="mr-2 h-5 w-5 text-muted-foreground"/>No Streams Configured</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">Use the section above to add a new UDP stream input.</p>
+              <p className="text-muted-foreground">Use the section above to add a new input stream.</p>
             </CardContent>
           </Card>
         )}

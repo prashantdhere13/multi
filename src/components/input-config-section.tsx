@@ -23,7 +23,7 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
   const handleSubmit = () => {
     if (!streamUrl || !inputLanguage || !outputLanguage) {
       // Basic validation, toast can be added here if needed, or rely on parent
-      alert("Please fill in all fields: UDP Stream URL, Input Language, and Output Language.");
+      alert("Please fill in all fields: Stream URL, Input Language, and Output Language.");
       return;
     }
     onAddStream({ streamUrl, inputLanguage, outputLanguage });
@@ -38,17 +38,17 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
           <Cable className="mr-3 h-6 w-6 text-primary" />
           Add New Stream Configuration
         </CardTitle>
-        <CardDescription>Configure a new UDP input stream with its translation language pair.</CardDescription>
+        <CardDescription>Configure a new input stream (UDP or SRT) with its translation language pair.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="newStreamUrl" className="text-sm font-medium">
-            Live UDP Stream URL
+            Live Stream URL (UDP/SRT)
           </Label>
           <Input
             id="newStreamUrl"
             type="url"
-            placeholder="udp://example.com:5000"
+            placeholder="udp://example.com:5000 or srt://example.com:1234"
             value={streamUrl}
             onChange={(e) => setStreamUrl(e.target.value)}
             className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
