@@ -14,34 +14,46 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { StreamInstance, LANGUAGES } from './caption-cast-ui'; // Import types
+import { ListVideo, AudioLines } from 'lucide-react';
+import type { StreamInstance, LANGUAGES, SUBTITLE_SOURCES, StreamInstanceConfig } from './caption-cast-ui';
 
 interface EditStreamDialogProps {
   isOpen: boolean;
   onClose: () => void;
   streamData: StreamInstance | null;
-  onSave: (updatedConfig: { id: string; streamUrl: string; inputLanguage: string; outputLanguage: string }) => void;
+  onSave: (updatedConfig: StreamInstanceConfig & { id: string }) => void;
   languages: typeof LANGUAGES;
+  subtitleSources: typeof SUBTITLE_SOURCES;
 }
 
-export function EditStreamDialog({ isOpen, onClose, streamData, onSave, languages }: EditStreamDialogProps) {
+export function EditStreamDialog({ 
+  isOpen, 
+  onClose, 
+  streamData, 
+  onSave, 
+  languages, 
+  subtitleSources 
+}: EditStreamDialogProps) {
   const [currentStreamUrl, setCurrentStreamUrl] = useState('');
   const [currentInputLanguage, setCurrentInputLanguage] = useState('');
   const [currentOutputLanguage, setCurrentOutputLanguage] = useState('');
+  const [currentSubtitleSource, setCurrentSubtitleSource] = useState<'mock' | 'teletext' | 'audio'>('mock');
+  const [currentSourceTrackId, setCurrentSourceTrackId] = useState('');
 
   useEffect(() => {
     if (streamData) {
       setCurrentStreamUrl(streamData.streamUrl);
       setCurrentInputLanguage(streamData.inputLanguage);
       setCurrentOutputLanguage(streamData.outputLanguage);
+      setCurrentSubtitleSource(streamData.subtitleSource);
+      setCurrentSourceTrackId(streamData.sourceTrackId || '');
     }
   }, [streamData, isOpen]); // Re-initialize when dialog opens or streamData changes
 
   const handleSaveChanges = () => {
     if (!streamData) return;
-    if (!currentStreamUrl || !currentInputLanguage || !currentOutputLanguage) {
-      // Basic validation, consider using toast for errors
-      alert("Please fill in all fields: Stream URL, Input Language, and Output Language.");
+    if (!currentStreamUrl || !currentInputLanguage || !currentOutputLanguage || !currentSubtitleSource) {
+      alert("Please fill in all required fields: Stream URL, Input Language, Output Language, and Subtitle Source.");
       return;
     }
     onSave({
@@ -49,6 +61,8 @@ export function EditStreamDialog({ isOpen, onClose, streamData, onSave, language
       streamUrl: currentStreamUrl,
       inputLanguage: currentInputLanguage,
       outputLanguage: currentOutputLanguage,
+      subtitleSource: currentSubtitleSource,
+      sourceTrackId: currentSubtitleSource !== 'mock' ? currentSourceTrackId : undefined,
     });
   };
 
@@ -58,58 +72,87 @@ export function EditStreamDialog({ isOpen, onClose, streamData, onSave, language
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px] bg-card">
+      <DialogContent className="sm:max-w-md bg-card">
         <DialogHeader>
           <DialogTitle>Edit Stream Configuration</DialogTitle>
           <DialogDescription>
-            Make changes to your stream URL and language settings. Click save when you're done.
+            Make changes to your stream URL, languages, and subtitle source settings. Click save when you're done.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="editStreamUrl" className="text-right col-span-1">
-              Stream URL
+          <div className="space-y-1">
+            <Label htmlFor="editStreamUrl" className="text-sm">
+              Stream URL (UDP/SRT)
             </Label>
             <Input
               id="editStreamUrl"
               value={currentStreamUrl}
               onChange={(e) => setCurrentStreamUrl(e.target.value)}
-              className="col-span-3 bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
+              className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
               placeholder="udp://... or srt://..."
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="editInputLanguage" className="text-right col-span-1">
-              Input Lang
-            </Label>
-            <Select value={currentInputLanguage} onValueChange={setCurrentInputLanguage}>
-              <SelectTrigger id="editInputLanguage" className="col-span-3 bg-background border-border focus:ring-primary">
-                <SelectValue placeholder="Select input language" />
-              </SelectTrigger>
-              <SelectContent>
-                {languages.map(lang => (
-                  <SelectItem key={`edit-in-${lang.code}`} value={lang.code}>{lang.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="editInputLanguage" className="text-sm">Input Lang</Label>
+              <Select value={currentInputLanguage} onValueChange={setCurrentInputLanguage}>
+                <SelectTrigger id="editInputLanguage" className="bg-background border-border focus:ring-primary">
+                  <SelectValue placeholder="Select input language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {languages.map(lang => (
+                    <SelectItem key={`edit-in-${lang.code}`} value={lang.code}>{lang.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="editOutputLanguage" className="text-sm">Output Lang</Label>
+              <Select value={currentOutputLanguage} onValueChange={setCurrentOutputLanguage}>
+                <SelectTrigger id="editOutputLanguage" className="bg-background border-border focus:ring-primary">
+                  <SelectValue placeholder="Select output language" />
+                </SelectTrigger>
+                <SelectContent>
+                  {languages.map(lang => (
+                    <SelectItem key={`edit-out-${lang.code}`} value={lang.code} disabled={lang.code === currentInputLanguage}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="editOutputLanguage" className="text-right col-span-1">
-              Output Lang
-            </Label>
-            <Select value={currentOutputLanguage} onValueChange={setCurrentOutputLanguage}>
-              <SelectTrigger id="editOutputLanguage" className="col-span-3 bg-background border-border focus:ring-primary">
-                <SelectValue placeholder="Select output language" />
+          <div className="space-y-1">
+            <Label htmlFor="editSubtitleSource" className="text-sm">Subtitle Source</Label>
+            <Select value={currentSubtitleSource} onValueChange={(value) => setCurrentSubtitleSource(value as 'mock' | 'teletext' | 'audio')}>
+              <SelectTrigger id="editSubtitleSource" className="bg-background border-border focus:ring-primary">
+                <SelectValue placeholder="Select subtitle source" />
               </SelectTrigger>
               <SelectContent>
-                {languages.map(lang => (
-                  <SelectItem key={`edit-out-${lang.code}`} value={lang.code} disabled={lang.code === currentInputLanguage}>
-                    {lang.name}
+                {subtitleSources.map(source => (
+                   <SelectItem key={`edit-subsource-${source.code}`} value={source.code}>
+                    {source.code === 'teletext' && <ListVideo className="inline h-4 w-4 mr-2" />}
+                    {source.code === 'audio' && <AudioLines className="inline h-4 w-4 mr-2" />}
+                    {source.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+          {currentSubtitleSource !== 'mock' && (
+            <div className="space-y-1">
+              <Label htmlFor="editSourceTrackId" className="text-sm">
+                Source Track ID/Language <span className="text-xs text-muted-foreground">(Optional)</span>
+              </Label>
+              <Input
+                id="editSourceTrackId"
+                value={currentSourceTrackId}
+                onChange={(e) => setCurrentSourceTrackId(e.target.value)}
+                className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
+                placeholder="e.g., 'eng', 'PID 101'"
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

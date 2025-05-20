@@ -7,28 +7,38 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Cable, PlusCircle } from 'lucide-react';
-import type { LANGUAGES } from './caption-cast-ui'; // Import LANGUAGES type
+import { Cable, PlusCircle, ListVideo, AudioLines } from 'lucide-react'; // Added ListVideo, AudioLines
+import type { LANGUAGES, SUBTITLE_SOURCES, StreamInstanceConfig } from './caption-cast-ui';
 
 interface InputConfigSectionProps {
-  onAddStream: (config: { streamUrl: string; inputLanguage: string; outputLanguage: string }) => void;
+  onAddStream: (config: StreamInstanceConfig) => void;
   languages: typeof LANGUAGES;
+  subtitleSources: typeof SUBTITLE_SOURCES;
 }
 
-export function InputConfigSection({ onAddStream, languages }: InputConfigSectionProps) {
+export function InputConfigSection({ onAddStream, languages, subtitleSources }: InputConfigSectionProps) {
   const [streamUrl, setStreamUrl] = useState<string>('');
-  const [inputLanguage, setInputLanguage] = useState<string>(languages.find(l => l.code === 'en')?.code || languages[0]?.code || ''); // Default to English or first available
-  const [outputLanguage, setOutputLanguage] = useState<string>(languages.find(l => l.code === 'de')?.code || languages[1]?.code || ''); // Default to German or second available
+  const [inputLanguage, setInputLanguage] = useState<string>(languages.find(l => l.code === 'en')?.code || languages[0]?.code || '');
+  const [outputLanguage, setOutputLanguage] = useState<string>(languages.find(l => l.code === 'de')?.code || languages[1]?.code || '');
+  const [subtitleSource, setSubtitleSource] = useState<'mock' | 'teletext' | 'audio'>(subtitleSources[0]?.code || 'mock');
+  const [sourceTrackId, setSourceTrackId] = useState<string>('');
+
 
   const handleSubmit = () => {
-    if (!streamUrl || !inputLanguage || !outputLanguage) {
-      // Basic validation, toast can be added here if needed, or rely on parent
-      alert("Please fill in all fields: Stream URL, Input Language, and Output Language.");
+    if (!streamUrl || !inputLanguage || !outputLanguage || !subtitleSource) {
+      alert("Please fill in all required fields: Stream URL, Input Language, Output Language, and Subtitle Source.");
       return;
     }
-    onAddStream({ streamUrl, inputLanguage, outputLanguage });
-    setStreamUrl(''); // Reset URL for next input
-    // Optionally reset languages or keep them for faster multiple additions with same languages
+    onAddStream({ 
+      streamUrl, 
+      inputLanguage, 
+      outputLanguage, 
+      subtitleSource, 
+      sourceTrackId: subtitleSource !== 'mock' ? sourceTrackId : undefined 
+    });
+    setStreamUrl(''); 
+    setSourceTrackId('');
+    // Optionally reset languages or subtitleSource, or keep them for faster multiple additions
   };
 
   return (
@@ -38,7 +48,7 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
           <Cable className="mr-3 h-6 w-6 text-primary" />
           Add New Stream Configuration
         </CardTitle>
-        <CardDescription>Configure a new input stream (UDP or SRT) with its translation language pair.</CardDescription>
+        <CardDescription>Configure a new input stream (UDP or SRT) with its translation and subtitle source settings.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
@@ -57,7 +67,7 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="inputLanguage" className="text-sm font-medium">Input Language</Label>
+            <Label htmlFor="inputLanguage" className="text-sm font-medium">Input Language (of content)</Label>
             <Select value={inputLanguage} onValueChange={setInputLanguage}>
               <SelectTrigger id="inputLanguage" className="bg-background border-border focus:ring-primary">
                 <SelectValue placeholder="Select input language" />
@@ -71,7 +81,7 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="outputLanguage" className="text-sm font-medium">Output Language</Label>
+            <Label htmlFor="outputLanguage" className="text-sm font-medium">Output Language (for translation)</Label>
             <Select value={outputLanguage} onValueChange={setOutputLanguage}>
               <SelectTrigger id="outputLanguage" className="bg-background border-border focus:ring-primary">
                 <SelectValue placeholder="Select output language" />
@@ -86,10 +96,46 @@ export function InputConfigSection({ onAddStream, languages }: InputConfigSectio
             </Select>
           </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="subtitleSource" className="text-sm font-medium">Subtitle Source</Label>
+            <Select value={subtitleSource} onValueChange={(value) => setSubtitleSource(value as 'mock' | 'teletext' | 'audio')}>
+              <SelectTrigger id="subtitleSource" className="bg-background border-border focus:ring-primary">
+                <SelectValue placeholder="Select subtitle source" />
+              </SelectTrigger>
+              <SelectContent>
+                {subtitleSources.map(source => (
+                  <SelectItem key={`subsource-${source.code}`} value={source.code}>
+                    {source.code === 'teletext' && <ListVideo className="inline h-4 w-4 mr-2" />}
+                    {source.code === 'audio' && <AudioLines className="inline h-4 w-4 mr-2" />}
+                    {source.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+            
+          {subtitleSource !== 'mock' && (
+            <div className="space-y-2">
+              <Label htmlFor="sourceTrackId" className="text-sm font-medium">
+                Source Track ID/Language <span className="text-xs text-muted-foreground">(Optional)</span>
+              </Label>
+              <Input
+                id="sourceTrackId"
+                type="text"
+                placeholder="e.g., 'eng', 'PID 101', 'Track 2'"
+                value={sourceTrackId}
+                onChange={(e) => setSourceTrackId(e.target.value)}
+                className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
+              />
+            </div>
+          )}
+        </div>
         
         <Button 
           onClick={handleSubmit} 
-          disabled={!streamUrl || !inputLanguage || !outputLanguage} 
+          disabled={!streamUrl || !inputLanguage || !outputLanguage || !subtitleSource} 
           className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           <PlusCircle className="mr-2 h-5 w-5" />
