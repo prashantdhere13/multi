@@ -20,12 +20,11 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
   const [streamUrl, setStreamUrl] = useState<string>('');
   const [inputLanguage, setInputLanguage] = useState<string>(languages.find(l => l.code === 'en')?.code || languages[0]?.code || '');
   const [outputLanguage, setOutputLanguage] = useState<string>(languages.find(l => l.code === 'de')?.code || languages[1]?.code || '');
-  const [subtitleSource, setSubtitleSource] = useState<'mock' | 'teletext' | 'audio'>(subtitleSources[0]?.code || 'mock');
+  const [subtitleSource, setSubtitleSource] = useState<'teletext' | 'audio'>(subtitleSources[0]?.code || 'teletext');
   const [sourceTrackId, setSourceTrackId] = useState<string>('');
 
 
   const handleSubmit = () => {
-    // Basic validation for streamUrl as it's always required
     if (!streamUrl) {
         alert("Stream URL (UDP/SRT) cannot be empty.");
         return;
@@ -39,17 +38,16 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
       inputLanguage, 
       outputLanguage, 
       subtitleSource, 
-      sourceTrackId: subtitleSource !== 'mock' ? sourceTrackId : undefined 
+      sourceTrackId: sourceTrackId || undefined // Always allow optional sourceTrackId
     });
     setStreamUrl(''); 
     setSourceTrackId('');
-    // Optionally reset languages or subtitleSource, or keep them for faster multiple additions
   };
 
   const getSourceTrackLabel = () => {
     if (subtitleSource === 'teletext') return "Teletext Page Number";
     if (subtitleSource === 'audio') return "Audio Track ID/Language";
-    return "Source Track ID/Language";
+    return "Source Track ID/Language"; // Should not happen with current SUBTITLE_SOURCES
   };
 
   const getSourceTrackPlaceholder = () => {
@@ -117,7 +115,7 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="subtitleSource" className="text-sm font-medium">Subtitle Source</Label>
-            <Select value={subtitleSource} onValueChange={(value) => setSubtitleSource(value as 'mock' | 'teletext' | 'audio')}>
+            <Select value={subtitleSource} onValueChange={(value) => setSubtitleSource(value as 'teletext' | 'audio')}>
               <SelectTrigger id="subtitleSource" className="bg-background border-border focus:ring-primary">
                 <SelectValue placeholder="Select subtitle source" />
               </SelectTrigger>
@@ -133,21 +131,20 @@ export function InputConfigSection({ onAddStream, languages, subtitleSources }: 
             </Select>
           </div>
             
-          {subtitleSource !== 'mock' && (
-            <div className="space-y-2">
-              <Label htmlFor="sourceTrackId" className="text-sm font-medium">
-                {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
-              </Label>
-              <Input
-                id="sourceTrackId"
-                type="text"
-                placeholder={getSourceTrackPlaceholder()}
-                value={sourceTrackId}
-                onChange={(e) => setSourceTrackId(e.target.value)}
-                className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
-              />
-            </div>
-          )}
+          {/* This input is always shown now, but its label/placeholder changes */}
+          <div className="space-y-2">
+            <Label htmlFor="sourceTrackId" className="text-sm font-medium">
+              {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
+            </Label>
+            <Input
+              id="sourceTrackId"
+              type="text"
+              placeholder={getSourceTrackPlaceholder()}
+              value={sourceTrackId}
+              onChange={(e) => setSourceTrackId(e.target.value)}
+              className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
+            />
+          </div>
         </div>
         
         <Button 

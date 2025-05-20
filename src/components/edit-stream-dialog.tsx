@@ -37,7 +37,7 @@ export function EditStreamDialog({
   const [currentStreamUrl, setCurrentStreamUrl] = useState('');
   const [currentInputLanguage, setCurrentInputLanguage] = useState('');
   const [currentOutputLanguage, setCurrentOutputLanguage] = useState('');
-  const [currentSubtitleSource, setCurrentSubtitleSource] = useState<'mock' | 'teletext' | 'audio'>('mock');
+  const [currentSubtitleSource, setCurrentSubtitleSource] = useState<'teletext' | 'audio'>('teletext');
   const [currentSourceTrackId, setCurrentSourceTrackId] = useState('');
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export function EditStreamDialog({
       setCurrentSubtitleSource(streamData.subtitleSource);
       setCurrentSourceTrackId(streamData.sourceTrackId || '');
     }
-  }, [streamData, isOpen]); // Re-initialize when dialog opens or streamData changes
+  }, [streamData, isOpen]);
 
   const handleSaveChanges = () => {
     if (!streamData) return;
@@ -66,7 +66,7 @@ export function EditStreamDialog({
       inputLanguage: currentInputLanguage,
       outputLanguage: currentOutputLanguage,
       subtitleSource: currentSubtitleSource,
-      sourceTrackId: currentSubtitleSource !== 'mock' ? currentSourceTrackId : undefined,
+      sourceTrackId: currentSourceTrackId || undefined,
     });
   };
 
@@ -141,7 +141,7 @@ export function EditStreamDialog({
           </div>
           <div className="space-y-1">
             <Label htmlFor="editSubtitleSource" className="text-sm">Subtitle Source</Label>
-            <Select value={currentSubtitleSource} onValueChange={(value) => setCurrentSubtitleSource(value as 'mock' | 'teletext' | 'audio')}>
+            <Select value={currentSubtitleSource} onValueChange={(value) => setCurrentSubtitleSource(value as 'teletext' | 'audio')}>
               <SelectTrigger id="editSubtitleSource" className="bg-background border-border focus:ring-primary">
                 <SelectValue placeholder="Select subtitle source" />
               </SelectTrigger>
@@ -156,20 +156,19 @@ export function EditStreamDialog({
               </SelectContent>
             </Select>
           </div>
-          {currentSubtitleSource !== 'mock' && (
-            <div className="space-y-1">
-              <Label htmlFor="editSourceTrackId" className="text-sm">
-                {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
-              </Label>
-              <Input
-                id="editSourceTrackId"
-                value={currentSourceTrackId}
-                onChange={(e) => setCurrentSourceTrackId(e.target.value)}
-                className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
-                placeholder={getSourceTrackPlaceholder()}
-              />
-            </div>
-          )}
+          
+          <div className="space-y-1">
+            <Label htmlFor="editSourceTrackId" className="text-sm">
+              {getSourceTrackLabel()} <span className="text-xs text-muted-foreground">(Optional)</span>
+            </Label>
+            <Input
+              id="editSourceTrackId"
+              value={currentSourceTrackId}
+              onChange={(e) => setCurrentSourceTrackId(e.target.value)}
+              className="bg-background border-border focus:ring-primary placeholder:text-muted-foreground/70"
+              placeholder={getSourceTrackPlaceholder()}
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
